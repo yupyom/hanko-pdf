@@ -64,9 +64,10 @@ TEMPLATES_PATH = DATA_DIR / "templates.json"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 REGISTERED_STAMPS_PATH = DATA_DIR / "registered-stamps.json"
 
-# Windowsでは全フォントのnameテーブル解析に時間がかかるため、凍結アプリだけは
-# 書込み可能なアプリデータ内に一覧キャッシュを保持する。
-if getattr(sys, "frozen", False) and sys.platform == "win32":
+# インストール版では全フォントのnameテーブル解析に時間がかかるため、書込み可能な
+# アプリデータ内に一覧キャッシュを保持する。キャッシュはフォントの追加・削除・更新を
+# 検知して自動的に作り直す。
+if getattr(sys, "frozen", False) and sys.platform in {"darwin", "win32"}:
     configure_font_catalog_cache(DATA_DIR / "font-catalog-v1.json")
 
 MAX_UPLOAD_BYTES = 35 * 1024 * 1024
@@ -90,7 +91,8 @@ app = FastAPI(title="Hanko PDF", docs_url=None, redoc_url=None)
 
 # フォント一覧は初回のOS／ファイル走査に時間がかかる。Windowsのpywebviewでは
 # 起動直後にこの処理を開始すると、UIメッセージ処理が遅延して「応答なし」と判定
-# されることがあるため、印影作成画面を初めて開いたときにだけ開始する。
+# されることがあるため、Windowsでは印影作成画面を初めて開いたときに開始する。
+# macOSなどでは起動直後からバックグラウンドで準備する。
 _font_preload_lock = Lock()
 _font_preload_thread: Thread | None = None
 
@@ -123,6 +125,13 @@ def font_preload_in_progress() -> bool:
     with _font_preload_lock:
         thread = _font_preload_thread
     return thread is not None and thread.is_alive()
+
+
+@app.on_event("startup")
+def preload_fonts_at_startup() -> None:
+    """macOS等では、印影作成画面を開く前からフォントの準備を始める。"""
+    if sys.platform != "win32":
+        start_font_preload()
 
 
 def fail(message: str, status_code: int = 400) -> None:

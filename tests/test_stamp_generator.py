@@ -734,6 +734,22 @@ class FontPreloadTests(unittest.TestCase):
                 {"platform": "win32", "frozen": True, **scan},
             )
 
+    def test_macos_starts_font_preload_at_server_startup(self) -> None:
+        with (
+            patch.object(app_module.sys, "platform", "darwin"),
+            patch.object(app_module, "start_font_preload") as preload,
+        ):
+            app_module.preload_fonts_at_startup()
+        preload.assert_called_once_with()
+
+    def test_windows_defers_font_preload_until_the_studio_opens(self) -> None:
+        with (
+            patch.object(app_module.sys, "platform", "win32"),
+            patch.object(app_module, "start_font_preload") as preload,
+        ):
+            app_module.preload_fonts_at_startup()
+        preload.assert_not_called()
+
     def test_start_font_preload_starts_one_daemon_thread(self) -> None:
         with (
             patch.object(app_module, "_font_preload_thread", None),

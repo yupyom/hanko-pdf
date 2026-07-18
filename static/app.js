@@ -150,6 +150,7 @@ async function updateSettings() {
 async function loadFonts() {
   if (state.fontsLoaded || state.fontsLoading) return;
   state.fontsLoading = true;
+  showFontLoading();
   startFontProgressPolling();
   setStudioStatus("フォントを準備しています…");
   try {
@@ -164,6 +165,7 @@ async function loadFonts() {
     state.fontsLoaded = true;
   } catch (error) {
     setStudioStatus(`フォント一覧を読み込めませんでした: ${error.message}`, true);
+    hideFontLoading();
   } finally {
     state.fontsLoading = false;
     stopFontProgressPolling();
@@ -172,7 +174,7 @@ async function loadFonts() {
 }
 
 function updateFontLoading(status) {
-  const show = status.platform === "win32" && status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
+  const show = status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
   elements.studioFontLoading.hidden = !show;
   if (!show) return;
   const completed = Number(status.completed) || 0;
@@ -182,12 +184,28 @@ function updateFontLoading(status) {
     ? "前回のフォント一覧を確認しています…"
     : status.state === "finalizing"
       ? "フォント一覧を整理しています…"
-      : "Windows のフォントを読み込んでいます…";
+      : status.platform === "win32"
+        ? "Windows の書体を読み込んでいます…"
+        : status.platform === "darwin"
+          ? "Mac の書体を読み込んでいます…"
+          : "書体を読み込んでいます…";
   elements.studioFontLoadingBar.style.width = `${progress}%`;
   const count = status.state === "finalizing"
     ? "メニューを準備しています…"
     : total ? `${completed} / ${total} ファイル` : "フォントファイルを数えています…";
   elements.studioFontLoadingDetail.textContent = status.current ? `${count}\n${status.current}` : count;
+}
+
+function showFontLoading() {
+  elements.studioPreview.hidden = true;
+  elements.studioFontLoading.hidden = false;
+  elements.studioFontLoadingLabel.textContent = "書体を準備しています…";
+  elements.studioFontLoadingBar.style.width = "2%";
+  elements.studioFontLoadingDetail.textContent = "お使いの環境にある書体を確認しています。";
+}
+
+function hideFontLoading() {
+  elements.studioFontLoading.hidden = true;
 }
 
 async function refreshFontProgress() {
@@ -208,7 +226,6 @@ function startFontProgressPolling() {
 function stopFontProgressPolling() {
   if (state.fontStatusTimer !== null) window.clearInterval(state.fontStatusTimer);
   state.fontStatusTimer = null;
-  elements.studioFontLoading.hidden = true;
 }
 
 function currentPageInfo() {
@@ -881,6 +898,8 @@ async function refreshStudioPreview(version) {
     if (state.studio.previewUrl) URL.revokeObjectURL(state.studio.previewUrl);
     state.studio.previewUrl = URL.createObjectURL(svg);
     elements.studioPreview.src = state.studio.previewUrl;
+    elements.studioPreview.hidden = false;
+    hideFontLoading();
     elements.useStudioStamp.disabled = false;
     elements.downloadStudioSvg.disabled = false;
     const lineBased = currentStudioFormat() !== "stamp" && $("input[name='representation']:checked").value === "geometric";
