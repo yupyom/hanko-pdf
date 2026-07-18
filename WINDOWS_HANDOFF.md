@@ -41,7 +41,43 @@ python -m pip install -r requirements.txt
 - ローディング用の要素は `hidden` 属性を確実に反映するCSSを用意してください。今回、一覧の取得自体は完了していたにもかかわらず、オーバーレイが残って処理中に見える問題がありました。
 - リリース前には、初回起動、初回の印影作成画面、キャッシュ生成後の二回目の印影作成画面を、各OSで手動確認してください。
 
-最初の配布物はPyInstallerのone-folder版をInno Setup等のインストーラーへまとめる方法が扱いやすいです。公開配布前には、インストーラーと実行ファイルをAuthenticode署名し、タイムスタンプを付与します。証明書、PFX、トークン、パスワードはリポジトリへ入れません。
+## Microsoft Store 向け MSIX
+
+Microsoft Store で配布する Windows 版は、Inno Setup の EXE/MSI ではなく MSIX を提出します。Store 提出後は Microsoft がパッケージを再署名するため、Store 配布に CA 発行のコード署名証明書は必要ありません。Web サイトなどから EXE/MSI/MSIX を直接配布する場合は別途コード署名が必要です。
+
+Partner Center で予約済みの Identity は次のとおりです。将来の更新でも変更せず、`packaging/windows/msix/AppxManifest.xml.template` と一致させます。
+
+- Package/Identity/Name: `yupyom.HankoPDF`
+- Package/Identity/Publisher: `CN=7927EB7F-72E2-4822-A979-3ADE223146BE`
+- Package/Properties/PublisherDisplayName: `yupyom`
+- Package Family Name: `yupyom.HankoPDF_fx9rea1yggdcp`
+- Microsoft Store ID: `9P6SK13W5K4F`
+
+`packaging/windows/msix/build-msix.ps1` は、Windows one-folder ビルドを入力に、Store 用アイコン、`AppxManifest.xml`、未署名の `.msix` と `.msixupload` を作成します。
+
+```powershell
+.\packaging\windows\msix\build-msix.ps1 `
+  -Python .\.hanko-venv-windows\Scripts\python.exe `
+  -Version 1.0.0.0
+```
+
+Store へ提出するのは `dist/msix/HankoPDF_<version>_x64.msixupload` です。リリースごとに 4 桁の MSIX version を増やします。Store提出用は署名せずに作成してください。
+
+ローカル試験だけは、Publisher が manifest と一致する自己署名証明書を作成し、テスト端末の `Cert:\CurrentUser\TrustedPeople` に `.cer` をインポートしてから、署名済み MSIX を `Add-AppxPackage` でインストールします。PFX、CER、パスワードはリポジトリに追加しません。
+
+```powershell
+$password = Read-Host -AsSecureString "ローカル試験用PFXのパスワード"
+.\packaging\windows\msix\New-HankoTestCertificate.ps1 -Password $password
+.\packaging\windows\msix\build-msix.ps1 `
+  -Python .\.hanko-venv-windows\Scripts\python.exe `
+  -Version 1.0.0.0 `
+  -CertificatePath .\build\msix-test-certificate\HankoPDF-local-test.pfx `
+  -CertificatePassword $password
+Import-Certificate .\build\msix-test-certificate\HankoPDF-local-test.cer Cert:\CurrentUser\TrustedPeople
+Add-AppxPackage .\dist\msix\HankoPDF_1.0.0.0_x64.msix
+```
+
+初回のローカル試験では、起動、PDF保存、印影作成画面の初回とキャッシュ後、アンインストール後の再インストールを確認します。Store 提出後の版は、パッケージの署名・配布・更新を Store に委ねます。
 
 ## Git運用
 
