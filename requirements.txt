@@ -1,0 +1,19 @@
+fastapi==0.128.8
+uvicorn==0.39.0
+python-multipart==0.0.20
+PyMuPDF==1.26.5
+fonttools==4.60.2
+pywebview==6.1
+appdirs==1.4.4
+# pyobjcメタパッケージは全macOSフレームワークを取得するため、GUIで必要なものだけを固定する。
+# 11.1はPython 3.9向けwheelを提供する最後の安定系列。
+bottle==0.13.4
+proxy-tools==0.1.0
+pyobjc-core==11.1; sys_platform == "darwin"
+pyobjc-framework-Cocoa==11.1; sys_platform == "darwin"
+pyobjc-framework-CoreText==11.1; sys_platform == "darwin"
+pyobjc-framework-Quartz==11.1; sys_platform == "darwin"
+pyobjc-framework-Security==11.1; sys_platform == "darwin"
+pyobjc-framework-UniformTypeIdentifiers==11.1; sys_platform == "darwin"
+pyobjc-framework-WebKit==11.1; sys_platform == "darwin"
+pyinstaller==6.19.0

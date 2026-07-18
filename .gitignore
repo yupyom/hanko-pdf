@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+
+# Python: bytecode, test reports and local virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.hanko-venv*/
+.venv/
+venv/
+
+# Local dependency and packaging caches
+.vendor/
+.pyinstaller-cache/
+
+# PyInstaller build output
+build/
+dist/
+
+# Local signing and notarization automation
+build-signed-mac-app.sh
+build-notarized-dmg.sh
+notarize-mac-app.sh
+
+# Development-time application data and generated files
+tmp/
+exports/
+registered-stamps/
+registered-stamps.json
+settings.json
+templates.json
+
+# Private development materials. Only the general stamp-studio design is public.
+dev_docs/*
+!dev_docs/STAMP_STUDIO_DESIGN.md
+
+# The landing page is still being designed locally and is not part of the first source release.
+docs/
