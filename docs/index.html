@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hanko PDF - PDFにハンコを押して保存するフリーウェア</title>
+  <meta name="description" content="Hanko PDFは、PDFにハンコを押して押印済みPDFとして保存できるフリーウェアです。紙に印刷して押してスキャンし直す小さな儀式を短縮します。">
+  <meta property="og:title" content="Hanko PDF">
+  <meta property="og:description" content="PDFにハンコを押して、押印済みPDFとして保存。見た目のためのフリーウェア。">
+  <meta property="og:type" content="website">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=LINE+Seed+JP:wght@400;700&amp;display=swap" rel="stylesheet">
+  <link rel="icon" href="assets/app-icon.png">
+  <link rel="stylesheet" href="styles.css?v=20260719-hero-layout">
+  <script src="download-config.js"></script>
+  <script src="download.js" defer></script>
+  <script src="sample-preview.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <header class="site-header" aria-label="サイトヘッダー">
+    <a class="brand" href="#top" aria-label="Hanko PDF トップへ">
+      <img src="assets/logo.svg" alt="Hanko PDF" width="180" height="56">
+    </a>
+    <nav class="site-nav" aria-label="ページ内ナビゲーション">
+      <a href="#workflow">使いどころ</a>
+      <a href="#features">できること</a>
+      <a href="#truth">正直な仕様</a>
+      <a href="#download">入手する</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section id="top" class="hero">
+      <div class="hero-layout">
+        <div class="hero-backdrop" aria-hidden="true">
+          <img class="hero-screen" src="assets/screenshot-hero-stamping.webp" alt="">
+          <img class="hero-character" src="assets/tsukuyo-standing.avif" alt="">
+        </div>
+        <div class="hero-content">
+          <p class="eyebrow">【フリーウェア】PDF押印の小さな時短係</p>
+          <h1>Hanko PDF</h1>
+          <p class="hero-lead">PDFにハンコを押して、素早く保存。<br>オリジナルハンコ作成機能付き。</p>
+          <p class="hero-copy">請求書を印刷して、ハンコを押して、スキャンして、ファイル名で少し迷う。あの一連の儀式を、さっと終わらせるためのユーティリティです。</p>
+          <div class="hero-actions" aria-label="主要リンク">
+            <a class="button primary" data-download-link href="https://github.com/yupyom/hanko-pdf/releases/latest">Mac版をダウンロード</a>
+            <a class="button secondary" href="https://github.com/yupyom/hanko-pdf">GitHubを見る</a>
+          </div>
+          <p class="hero-note">電子署名でも承認システムでもありません。<br>デジタル押印を、ラク〜にやりとげるツールです。</p>
+        </div>
+        <div class="hero-stamps" aria-label="作成できる印影の例">
+          <img src="assets/stamp-nekoda.svg" alt="ねこだ印の例">
+          <img src="assets/stamp-yoshi.svg" alt="確認ヨシ印の例">
+          <img src="assets/stamp-company-square-1.svg" alt="会社丸印の例">
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow" class="section process-section">
+      <div class="wrap">
+        <div class="section-heading">
+          <p class="eyebrow">PAPERLESS, MOSTLY</p>
+          <h2>紙の旅を、机の上で終わらせる。</h2>
+          <p>個人事業主や小さな会社の書類仕事にある「そこだけ紙？」な瞬間へ。大げさなワークフローはありません。PDFを開いて、ハンコを押して、別名保存。それだけです。</p>
+        </div>
+        <div class="process-grid" aria-label="従来作業とHanko PDFの違い">
+          <article class="process-item old">
+            <span class="step-label">Before</span>
+            <h3>印刷、押印、スキャン</h3>
+            <p>プリンタの機嫌、朱肉の濃さ、スキャナの傾き。小さな書類に小さくない手間。</p>
+          </article>
+          <article class="process-item stamp">
+            <span class="step-label">Hanko PDF</span>
+            <h3>PDFへぽん</h3>
+            <p>実寸の印影を押し、mm単位で位置とサイズを調整。元PDFはそのまま残します。</p>
+          </article>
+          <article class="process-item done">
+            <span class="step-label">After</span>
+            <h3>押印済みPDFを書き出し</h3>
+            <p>請求書や申請書をそのまま送れる形へ。紙の出番は、今日は休暇です。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section feature-section">
+      <div class="wrap">
+        <div class="section-heading">
+          <p class="eyebrow">2 STEPS ONLY</p>
+          <h2>印影を作って押すだけのシンプル操作です。</h2>
+          <p>印影を作ったら、PDFを押して保存。多機能を名乗るより、押印作業の「ここが面倒」をサポートします。</p>
+        </div>
+
+        <div class="guide-list">
+          <article class="guide-step guide-step--create">
+            <div class="guide-copy">
+              <span class="guide-number">01</span>
+              <h3>印影を作る</h3>
+              <p>個人丸印、会社認印、会社角印、長方形スタンプをSVGとして作成できます。文字や画像を組み合わせて、枠の太さやカラー、余白を整えます。</p>
+              <p class="guide-voice">「まずは、いつも使うハンコを作成！」</p>
+              <p class="notice">* ご自身で予め用意した画像も使えます。正式な社判などは画像データ納品に対応した印章店へのご発注をオススメします。</p>
+            </div>
+            <figure class="guide-shot">
+              <img src="assets/screenshot-square.webp" alt="会社角印を作成しているHanko PDFの画面" loading="lazy">
+            </figure>
+            <img class="guide-character" src="assets/tsukuyo-introduces-pdf-cutout.avif" alt="書類を示して印影づくりを案内する判ツクヨ" loading="lazy">
+          </article>
+          <article class="guide-step guide-step--place">
+            <div class="guide-copy">
+              <span class="guide-number">02</span>
+              <h3>PDFを押して保存</h3>
+              <p>PDFを見ながらハンコを押し、幅、高さ、位置、角度をmm単位で調整。押印済みPDFを別ファイルとして保存します。</p>
+              <p class="guide-voice">「この位置ですね。ぽんと押して保存です！」</p>
+            </div>
+            <figure class="guide-shot">
+              <img src="assets/screenshot-invoice.webp" alt="請求書PDFへ会社角印を配置しているHanko PDFの画面" loading="lazy">
+            </figure>
+            <img class="guide-character" src="assets/tsukuyo-places-stamp-cutout.avif" alt="PDFへハンコを押す操作を案内する判ツクヨ" loading="lazy">
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section samples-section" aria-labelledby="samples-title">
+      <div class="wrap">
+        <div class="section-heading">
+          <p class="eyebrow">SAMPLES</p>
+          <h2 id="samples-title">押すと、こうなります。</h2>
+          <p>サンプルPDFへ押印した画面です。大事なのは、これ以上すごいことをしていないところ。見た目のハンコが欲しいときに、見た目のハンコを押します。</p>
+        </div>
+        <div class="sample-grid">
+          <button class="sample-card sample-card--preview" type="button" data-preview-open="invoice-preview" aria-haspopup="dialog" aria-controls="invoice-preview">
+            <img src="assets/invoice-stamped-preview.webp" alt="請求書PDFへ会社角印を押した例" loading="lazy">
+            <span>請求書を拡大</span>
+          </button>
+          <button class="sample-card sample-card--preview" type="button" data-preview-open="expense-preview" aria-haspopup="dialog" aria-controls="expense-preview">
+            <img src="assets/expense-stamped-preview.webp" alt="仮払い申請書PDFへ複数の丸印を押した例" loading="lazy">
+            <span>申請書を拡大</span>
+          </button>
+          <button class="sample-card sample-card--preview" type="button" data-preview-open="newyear-preview" aria-haspopup="dialog" aria-controls="newyear-preview">
+            <img src="assets/newyear-stamped-preview.webp" alt="新年会の案内PDFへ超極秘スタンプを押した例" loading="lazy">
+            <span>新年会の案内を拡大</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section gallery-section" aria-labelledby="gallery-title">
+      <div class="wrap">
+        <div class="section-heading">
+          <p class="eyebrow">STAMP PARADE</p>
+          <h2 id="gallery-title">印影見本、勢ぞろい。</h2>
+          <p>お手持ちのフォントとSVG画像で、楽しいハンコ画像を作りましょう。<br>
+            実用寄りからネタ用まで、アイデア次第で楽しく印影をデザインできます。</p>
+        </div>
+        <div class="stamp-grid">
+          <figure><img src="assets/stamp-nekoda.svg" alt="ねこだの丸印"><figcaption>ひらがな丸印</figcaption></figure>
+          <figure><img src="assets/stamp_icononly.svg" alt="猫山の丸印"><figcaption>フルカラー印</figcaption></figure>
+          <figure><img src="assets/stamp-company-square-1.svg" alt="合同会社アメショ商会之印"><figcaption>会社角印</figcaption></figure>
+          <figure><img src="assets/stamp-representative.svg" alt="合同会社アメショ商会の丸印"><figcaption>代表者認印</figcaption></figure>
+          <figure><img src="assets/stamp-secret.svg" alt="超極秘スタンプ"><figcaption>超極秘スタンプ</figcaption></figure>
+          <figure><img src="assets/stamp-yoshi.svg" alt="確認ヨシ！スタンプ"><figcaption>確認ヨシ！スタンプ</figcaption></figure>
+          <figure><img src="assets/stamp-phone.svg" alt="電話アリスタンプ"><figcaption>電話アリスタンプ</figcaption></figure>
+          <figure><img src="assets/stamp-kairan.svg" alt="回覧スタンプ"><figcaption>回覧スタンプ</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="truth" class="section truth-section">
+      <div class="wrap">
+        <div class="section-heading">
+          <p class="eyebrow">HONEST SPEC</p>
+          <h2>正直な仕様です。</h2>
+          <p>便利そうな名前ですが、できないこともはっきりしています。<br>
+            残念ながら、すごいシステムではありません。</p>
+        </div>
+        <div class="truth-grid">
+          <article class="truth-card can">
+            <h3>できます</h3>
+            <ul>
+              <li>PDFへ画像、SVG、PDF印影を配置して保存</li>
+              <li>オリジナルデザインのハンコ画像作成機能</li>
+              <li>印影SVGへメタデータの埋め込み</li>
+              <li>PDFキーワードへ印影のメタ情報を埋め込み</li>
+              <li>すべての処理はアプリ内だけで完結</li>
+            </ul>
+          </article>
+          <article class="truth-card cannot">
+            <h3>できません</h3>
+            <ul>
+              <li>電子署名、証明書、タイムスタンプ</li>
+              <li>PDFの暗号署名や暗号化</li>
+              <li>申請承認ワークフロー</li>
+              <li>法的な本人性や真正性の保証</li>
+              <li>すごいSaaSっぽいダッシュボード</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="download" class="section download-section">
+      <div class="wrap">
+        <div class="download-copy">
+          <p class="eyebrow" data-download-eyebrow>FREEWARE FOR MAC</p>
+          <h2 data-download-title>Mac用フリーウェアとして公開中。</h2>
+          <p data-download-description>Hanko PDFは、PDFへハンコを押して保存するためのフリーウェアです。<br>
+            ソースコードもGitHubで公開しています。Windows版もまもなくリリース予定。</p>
+          <div class="download-actions">
+            <a class="button primary" data-download-link href="https://github.com/yupyom/hanko-pdf/releases/latest">Mac版をダウンロード</a>
+            <a class="button secondary" href="https://github.com/yupyom/hanko-pdf">GitHubリポジトリ</a>
+          </div>
+        </div>
+        <div class="donation-box">
+          <img src="assets/app-icon.png" alt="Hanko PDFアプリアイコン" loading="lazy">
+          <div>
+            <h3>寄付の受付は準備中</h3>
+            <p>開発継続のためのご支援を受け取る方法を検討しています。役に立ったと思ったら、思い出してください。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="pdf-preview-dialog" id="invoice-preview" data-preview-dialog aria-labelledby="invoice-preview-title">
+    <div class="pdf-preview-panel">
+      <div class="pdf-preview-header">
+        <div>
+          <p class="eyebrow">STAMPED PDF SAMPLE</p>
+          <h2 id="invoice-preview-title">請求書サンプル</h2>
+        </div>
+        <button class="pdf-preview-close" type="button" data-preview-close aria-label="プレビューを閉じる">&times;</button>
+      </div>
+      <div class="pdf-preview-body">
+        <img src="assets/invoice-stamped-preview.webp" alt="会社角印を押した請求書PDF" loading="lazy">
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="pdf-preview-dialog" id="expense-preview" data-preview-dialog aria-labelledby="expense-preview-title">
+    <div class="pdf-preview-panel">
+      <div class="pdf-preview-header">
+        <div>
+          <p class="eyebrow">STAMPED PDF SAMPLE</p>
+          <h2 id="expense-preview-title">接待交際費仮払い申請書</h2>
+        </div>
+        <button class="pdf-preview-close" type="button" data-preview-close aria-label="プレビューを閉じる">&times;</button>
+      </div>
+      <div class="pdf-preview-body">
+        <img src="assets/expense-stamped-preview.webp" alt="複数の丸印を押した接待交際費仮払い申請書PDF" loading="lazy">
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="pdf-preview-dialog" id="newyear-preview" data-preview-dialog aria-labelledby="newyear-preview-title">
+    <div class="pdf-preview-panel">
+      <div class="pdf-preview-header">
+        <div>
+          <p class="eyebrow">STAMPED PDF SAMPLE</p>
+          <h2 id="newyear-preview-title">新年会の案内</h2>
+        </div>
+        <button class="pdf-preview-close" type="button" data-preview-close aria-label="プレビューを閉じる">&times;</button>
+      </div>
+      <div class="pdf-preview-body">
+        <img src="assets/newyear-stamped-preview.webp" alt="超極秘スタンプを押した新年会の案内PDF" loading="lazy">
+      </div>
+    </div>
+  </dialog>
+
+  <footer class="site-footer">
+    <img src="assets/logo.svg" alt="Hanko PDF" width="150" height="46">
+    <p>Hanko PDFは、見た目のためのPDF押印ユーティリティです。電子署名ではありません。</p>
+  </footer>
+</body>
+</html>

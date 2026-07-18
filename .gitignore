@@ -37,6 +37,3 @@ templates.json
 # Private development materials. Only the general stamp-studio design is public.
 dev_docs/*
 !dev_docs/STAMP_STUDIO_DESIGN.md
-
-# The landing page is still being designed locally and is not part of the first source release.
-docs/
