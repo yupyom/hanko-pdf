@@ -53,7 +53,7 @@ Partner Center で予約済みの Identity は次のとおりです。将来の�
 - Package Family Name: `yupyom.HankoPDF_fx9rea1yggdcp`
 - Microsoft Store ID: `9P6SK13W5K4F`
 
-`packaging/windows/msix/build-msix.ps1` は、Windows one-folder ビルドを入力に、Store 用アイコン、`AppxManifest.xml`、未署名の `.msix` と `.msixupload` を作成します。
+`packaging/windows/msix/build-msix.ps1` は、Windows one-folder ビルドを入力に、Store 用アイコン、`AppxManifest.xml`、未署名の `.msix` と `.msixupload` を作成します。pywebview / WebView2 のプロファイルは、凍結版の書込み可能な `%LOCALAPPDATA%/Hanko PDF/webview` へ明示的に保存します。
 
 ```powershell
 .\packaging\windows\msix\build-msix.ps1 `
@@ -63,7 +63,7 @@ Partner Center で予約済みの Identity は次のとおりです。将来の�
 
 Store へ提出するのは `dist/msix/HankoPDF_<version>_x64.msixupload` です。リリースごとに 4 桁の MSIX version を増やします。Store提出用は署名せずに作成してください。
 
-ローカル試験だけは、Publisher が manifest と一致する自己署名証明書を作成し、テスト端末の `Cert:\CurrentUser\TrustedPeople` に `.cer` をインポートしてから、署名済み MSIX を `Add-AppxPackage` でインストールします。PFX、CER、パスワードはリポジトリに追加しません。
+ローカル試験だけは、Publisher が manifest と一致し、コード署名用途と基本制約を持つ自己署名証明書を作成します。管理者として起動した PowerShell で、テスト端末の `Cert:\LocalMachine\TrustedPeople` に PFX をインポートしてから、署名済み MSIX を `Add-AppxPackage` でインストールします。自己署名証明書は試験中だけに限り、試験後に削除します。PFX、CER、パスワードはリポジトリに追加しません。
 
 ```powershell
 $password = Read-Host -AsSecureString "ローカル試験用PFXのパスワード"
@@ -73,11 +73,14 @@ $password = Read-Host -AsSecureString "ローカル試験用PFXのパスワー�
   -Version 1.0.0.0 `
   -CertificatePath .\build\msix-test-certificate\HankoPDF-local-test.pfx `
   -CertificatePassword $password
-Import-Certificate .\build\msix-test-certificate\HankoPDF-local-test.cer Cert:\CurrentUser\TrustedPeople
+Import-PfxCertificate `
+  -FilePath .\build\msix-test-certificate\HankoPDF-local-test.pfx `
+  -CertStoreLocation Cert:\LocalMachine\TrustedPeople `
+  -Password $password
 Add-AppxPackage .\dist\msix\HankoPDF_1.0.0.0_x64.msix
 ```
 
-初回のローカル試験では、起動、PDF保存、印影作成画面の初回とキャッシュ後、アンインストール後の再インストールを確認します。Store 提出後の版は、パッケージの署名・配布・更新を Store に委ねます。
+初回のローカル試験では、起動、PDF保存、印影作成画面の初回とキャッシュ後、アンインストール後の再インストールを確認します。試験後はこの自己署名証明書を `LocalMachine\TrustedPeople` から削除します。Store 提出後の版は、パッケージの署名・配布・更新を Store に委ねます。
 
 ## Git運用
 

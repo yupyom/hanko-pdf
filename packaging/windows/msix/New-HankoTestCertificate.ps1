@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)]
     [SecureString]$Password,
     [string]$OutputDirectory = "build\msix-test-certificate"
@@ -17,7 +17,10 @@ $certificate = New-SelfSignedCertificate `
     -KeyUsage DigitalSignature `
     -KeyExportPolicy Exportable `
     -CertStoreLocation "Cert:\CurrentUser\My" `
-    -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3") `
+    -TextExtension @(
+        "2.5.29.37={text}1.3.6.1.5.5.7.3.3",
+        "2.5.29.19={text}"
+    ) `
     -FriendlyName "Hanko PDF local MSIX test"
 
 $pfxPath = Join-Path $OutputDirectory "HankoPDF-local-test.pfx"
@@ -27,4 +30,4 @@ Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
 
 Write-Host "PFX: $pfxPath"
 Write-Host "CER: $cerPath"
-Write-Host "この CER をテスト端末の Cert:\CurrentUser\TrustedPeople へインポートしてから Add-AppxPackage を実行してください。"
+Write-Host "管理者 PowerShell で、この PFX を Cert:\LocalMachine\TrustedPeople へインポートしてから Add-AppxPackage を実行してください。"

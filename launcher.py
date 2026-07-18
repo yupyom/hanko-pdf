@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import shutil
+import sys
 import threading
 import time
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import Any
 
 import uvicorn
 
-from app import app, batch_export_files, export_path, stamp_path
+from app import DATA_DIR, app, batch_export_files, export_path, stamp_path
 
 
 HOST = "127.0.0.1"
@@ -160,7 +161,13 @@ def main() -> None:
             js_api=native_api,
         )
         native_api.window = window
-        webview.start()
+        # MSIXでは pywebview の既定プロファイル（Roaming AppData）がWebView2から
+        # 書込み不能・初期化待ちになることがある。Windowsの凍結版だけ、アプリが
+        # 管理する書込み可能な場所を指定し、macOSと開発起動の既定動作は変えない。
+        if sys.platform == "win32" and getattr(sys, "frozen", False):
+            webview.start(storage_path=str(DATA_DIR / "webview"))
+        else:
+            webview.start()
     finally:
         server.should_exit = True
         listener.close()

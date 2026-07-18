@@ -151,6 +151,13 @@ async function loadFonts() {
   if (state.fontsLoaded || state.fontsLoading) return;
   state.fontsLoading = true;
   showFontLoading();
+  const runtime = await fontRuntime();
+  // Windows の凍結版 WebView2 では、ビュー遷移直後に読込を開始すると
+  // ローダーの描画機会を得られず無応答に見えることがある。バックエンドの
+  // platform/frozen を判定源にして、この組合せだけ短く制御を譲る。
+  if (runtime.platform === "win32" && runtime.frozen) {
+    await new Promise((resolve) => window.setTimeout(resolve, 32));
+  }
   startFontProgressPolling();
   setStudioStatus("フォントを準備しています…");
   try {
@@ -173,10 +180,24 @@ async function loadFonts() {
   }
 }
 
+async function fontRuntime() {
+  try {
+    const response = await fetch("/api/font-status");
+    if (!response.ok) return {};
+    const status = await response.json();
+    updateFontLoading(status);
+    return status;
+  } catch {
+    return {};
+  }
+}
+
 function updateFontLoading(status) {
-  const show = status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
-  elements.studioFontLoading.hidden = !show;
-  if (!show) return;
+  const showProgress = status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
+  // ローダーはフォント一覧の取得完了だけでは閉じない。実プレビューまたは
+  // 明確なエラーが表示されるまで、showFontLoading / hideFontLoading が管理する。
+  if (!showProgress) return;
+  elements.studioFontLoading.hidden = false;
   const completed = Number(status.completed) || 0;
   const total = Number(status.total) || 0;
   const progress = total ? Math.max(2, Math.min(100, completed / total * 100)) : 2;
@@ -907,6 +928,7 @@ async function refreshStudioPreview(version) {
   } catch (error) {
     if (version !== state.studio.version) return;
     setStudioStatus(error.message, true);
+    hideFontLoading();
   }
 }
 

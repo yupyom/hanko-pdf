@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Python = "python",
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
     [string]$Version = "1.0.0.0",
@@ -49,7 +49,11 @@ with Image.open(source) as original:
     canvas.alpha_composite(image, ((width - image.width) // 2, (height - image.height) // 2))
     canvas.save(destination, format="PNG", optimize=True)
 '@
-    & $Python -c $script (Join-Path $ProjectRoot "assets\hanko-icon.png") $Destination $Width $Height
+    # Windows PowerShell 5.1 は -c に渡した文字列内の引用符を失うことがあるため、
+    # Python コードは一時ファイルとして実行する。
+    $scriptPath = Join-Path $ProjectRoot "build\msix-store-asset.py"
+    Set-Content -LiteralPath $scriptPath -Value $script -Encoding UTF8
+    & $Python $scriptPath (Join-Path $ProjectRoot "assets\hanko-icon.png") $Destination $Width $Height
     if ($LASTEXITCODE -ne 0) { throw "Store 用アイコンの生成に失敗しました: $Destination" }
 }
 
