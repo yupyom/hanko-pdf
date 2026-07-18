@@ -17,3 +17,5 @@ pyobjc-framework-Security==11.1; sys_platform == "darwin"
 pyobjc-framework-UniformTypeIdentifiers==11.1; sys_platform == "darwin"
 pyobjc-framework-WebKit==11.1; sys_platform == "darwin"
 pyinstaller==6.19.0
+# Windows build: assets/hanko-icon.png から EXE 用 .ico を生成する。
+pillow==12.3.0

@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock, Thread
 from typing import Any, Iterable
 from xml.etree import ElementTree as ET
 
@@ -28,6 +29,7 @@ JAPANESE_MAC_LANGUAGE = 11
 SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 MAX_SVG_ASSETS = 24
 MAX_SVG_ASSET_BYTES = 5 * 1024 * 1024
+FONT_CACHE_VERSION = 1
 
 # 一部のOS同梱フォントは壊れていなくてもnameテーブルの警告を出す。
 # 利用できないフォントは個別に除外するため、一覧取得時はログを静かにする。
@@ -63,6 +65,21 @@ class FontRecord:
             "style": self.localized_style,
             "styleEnglish": self.style,
             "weight": self.weight,
+        }
+
+    def as_cache_value(self) -> dict[str, str | int]:
+        return {
+            "identifier": self.identifier,
+            "familyIdentifier": self.family_identifier,
+            "family": self.family,
+            "localizedFamily": self.localized_family,
+            "fullName": self.full_name,
+            "localizedFullName": self.localized_full_name,
+            "style": self.style,
+            "localizedStyle": self.localized_style,
+            "weight": self.weight,
+            "path": str(self.path),
+            "index": self.index,
         }
 
 
@@ -148,6 +165,40 @@ class StampDesign:
         return self.frame if self.frame_width > 0 else "none"
 
 
+_font_cache_path: Path | None = None
+_font_cache_lock = Lock()
+_font_cache_write_lock = Lock()
+_font_cache_write_thread: Thread | None = None
+_font_scan_status_lock = Lock()
+_font_scan_status: dict[str, str | int | bool] = {
+    "state": "idle",
+    "completed": 0,
+    "total": 0,
+    "current": "",
+    "cache": False,
+}
+
+
+def configure_font_catalog_cache(path: Path | None) -> None:
+    """フォントメタデータのローカルキャッシュ先を設定する。"""
+    global _font_cache_path
+    with _font_cache_lock:
+        _font_cache_path = path
+        font_catalog.cache_clear()
+    _set_font_scan_status(state="idle", completed=0, total=0, current="", cache=False)
+
+
+def font_scan_status() -> dict[str, str | int | bool]:
+    """UIポーリング用の、現在のフォント走査状態を返す。"""
+    with _font_scan_status_lock:
+        return _font_scan_status.copy()
+
+
+def _set_font_scan_status(**values: str | int | bool) -> None:
+    with _font_scan_status_lock:
+        _font_scan_status.update(values)
+
+
 def _font_directories() -> tuple[Path, ...]:
     home = Path.home()
     directories = [
@@ -219,11 +270,12 @@ def _font_count(path: Path) -> int:
         return 0
 
 
-def _font_sources() -> Iterable[tuple[Path, int]]:
-    """直接検出とCore Text検出を統合し、同一ファイル・同一面を重複させない。"""
+def _font_paths() -> tuple[Path, ...]:
+    """直接検出とCore Text検出を統合し、同一フォントファイルを重複させない。"""
     seen: set[Path] = set()
-    for paths in (_font_files(), _coretext_font_files()):
-        for path in paths:
+    paths: list[Path] = []
+    for sources in (_font_files(), _coretext_font_files()):
+        for path in sources:
             try:
                 resolved_path = path.resolve()
             except OSError:
@@ -231,8 +283,111 @@ def _font_sources() -> Iterable[tuple[Path, int]]:
             if resolved_path in seen:
                 continue
             seen.add(resolved_path)
-            for index in range(_font_count(path)):
-                yield path, index
+            paths.append(path)
+    return tuple(paths)
+
+
+def _font_sources() -> Iterable[tuple[Path, int]]:
+    """検出したファイルとTTC内の各面を、フォントレコード用に展開する。"""
+    for path in _font_paths():
+        for index in range(_font_count(path)):
+            yield path, index
+
+
+def _font_manifest(paths: Iterable[Path]) -> list[dict[str, str | int]]:
+    entries: list[dict[str, str | int]] = []
+    for path in paths:
+        try:
+            stat = path.stat()
+            resolved_path = str(path.resolve())
+        except OSError:
+            continue
+        entries.append({"path": resolved_path, "mtimeNs": stat.st_mtime_ns, "size": stat.st_size})
+    return sorted(entries, key=lambda entry: str(entry["path"]).casefold())
+
+
+def _font_record_from_cache(value: Any) -> FontRecord | None:
+    if not isinstance(value, dict):
+        return None
+    try:
+        record = FontRecord(
+            identifier=str(value["identifier"]),
+            family_identifier=str(value["familyIdentifier"]),
+            family=str(value["family"]),
+            localized_family=str(value["localizedFamily"]),
+            full_name=str(value["fullName"]),
+            localized_full_name=str(value["localizedFullName"]),
+            style=str(value["style"]),
+            localized_style=str(value["localizedStyle"]),
+            weight=max(1, min(int(value["weight"]), 1000)),
+            path=Path(str(value["path"])),
+            index=int(value["index"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    return record if record.path.is_file() and record.index >= 0 else None
+
+
+def _cached_font_catalog(paths: tuple[Path, ...]) -> tuple[FontRecord, ...] | None:
+    with _font_cache_lock:
+        cache_path = _font_cache_path
+    if cache_path is None:
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("version") != FONT_CACHE_VERSION:
+        return None
+    if payload.get("manifest") != _font_manifest(paths):
+        return None
+    values = payload.get("records")
+    if not isinstance(values, list):
+        return None
+    records = [_font_record_from_cache(value) for value in values]
+    if any(record is None for record in records):
+        return None
+    return tuple(record for record in records if record is not None)
+
+
+def _save_font_catalog_cache(paths: tuple[Path, ...], records: tuple[FontRecord, ...]) -> bool:
+    with _font_cache_lock:
+        cache_path = _font_cache_path
+    if cache_path is None:
+        return False
+    payload = {
+        "version": FONT_CACHE_VERSION,
+        "manifest": _font_manifest(paths),
+        "records": [record.as_cache_value() for record in records],
+    }
+    temporary_path = cache_path.with_suffix(f"{cache_path.suffix}.tmp")
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        temporary_path.replace(cache_path)
+        return True
+    except (OSError, TypeError, ValueError) as error:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        logging.warning("フォント一覧キャッシュを保存できませんでした: %s", error)
+        return False
+
+
+def _save_font_catalog_cache_in_background(paths: tuple[Path, ...], records: tuple[FontRecord, ...]) -> None:
+    """キャッシュI/Oでフォント選択画面の準備を待たせない。"""
+    global _font_cache_write_thread
+    with _font_cache_write_lock:
+        if _font_cache_write_thread is not None and _font_cache_write_thread.is_alive():
+            return
+
+        def save() -> None:
+            if _save_font_catalog_cache(paths, records):
+                _set_font_scan_status(cache=True)
+
+        _font_cache_write_thread = Thread(target=save, name="hanko-font-cache-write", daemon=True)
+        _font_cache_write_thread.start()
 
 
 def _font_names(font: TTFont, name_id: int, fallback: str) -> tuple[str, str]:
@@ -270,56 +425,78 @@ def _font_names(font: TTFont, name_id: int, fallback: str) -> tuple[str, str]:
 @lru_cache(maxsize=1)
 def font_catalog() -> tuple[FontRecord, ...]:
     """直接のファイル走査とmacOSの登録情報を統合する。壊れたフォントは一覧から除外する。"""
-    records: list[FontRecord] = []
-    for path, index in _font_sources():
-        try:
-            font = TTFont(path, fontNumber=index, lazy=True)
-            if not font.getBestCmap() or "hmtx" not in font or "hhea" not in font:
-                font.close()
-                continue
-            legacy_family, localized_legacy_family = _font_names(font, 1, path.stem)
-            typographic_family, localized_typographic_family = _font_names(font, 16, "")
-            family = typographic_family or legacy_family
-            localized_family = localized_typographic_family or localized_legacy_family
-            full_name, localized_full_name = _font_names(font, 4, family)
-            legacy_style, localized_legacy_style = _font_names(font, 2, "Regular")
-            typographic_style, localized_typographic_style = _font_names(font, 17, "")
-            style = typographic_style or legacy_style
-            localized_style = localized_typographic_style or localized_legacy_style
-            weight = int(font["OS/2"].usWeightClass) if "OS/2" in font else 400
-            font.close()
-        except Exception:
-            continue
-        source = f"{path.resolve()}:{index}".encode("utf-8")
-        identifier = hashlib.sha256(source).hexdigest()[:20]
-        family_source = family.casefold().strip().encode("utf-8")
-        family_identifier = hashlib.sha256(family_source).hexdigest()[:16]
-        records.append(
-            FontRecord(
-                identifier,
-                family_identifier,
-                family,
-                localized_family,
-                full_name,
-                localized_full_name,
-                style,
-                localized_style,
-                max(1, min(weight, 1000)),
-                path,
-                index,
+    try:
+        paths = _font_paths()
+        _set_font_scan_status(state="checking_cache", completed=0, total=len(paths), current="", cache=False)
+        cached_records = _cached_font_catalog(paths)
+        if cached_records is not None:
+            _set_font_scan_status(state="ready", completed=len(paths), total=len(paths), current="", cache=True)
+            return cached_records
+
+        records: list[FontRecord] = []
+        _set_font_scan_status(state="scanning", completed=0, total=len(paths), current="", cache=False)
+        for completed, path in enumerate(paths, start=1):
+            _set_font_scan_status(state="scanning", completed=completed - 1, total=len(paths), current=path.name, cache=False)
+            for index in range(_font_count(path)):
+                try:
+                    font = TTFont(path, fontNumber=index, lazy=True)
+                    if not font.getBestCmap() or "hmtx" not in font or "hhea" not in font:
+                        font.close()
+                        continue
+                    legacy_family, localized_legacy_family = _font_names(font, 1, path.stem)
+                    typographic_family, localized_typographic_family = _font_names(font, 16, "")
+                    family = typographic_family or legacy_family
+                    localized_family = localized_typographic_family or localized_legacy_family
+                    full_name, localized_full_name = _font_names(font, 4, family)
+                    legacy_style, localized_legacy_style = _font_names(font, 2, "Regular")
+                    typographic_style, localized_typographic_style = _font_names(font, 17, "")
+                    style = typographic_style or legacy_style
+                    localized_style = localized_typographic_style or localized_legacy_style
+                    weight = int(font["OS/2"].usWeightClass) if "OS/2" in font else 400
+                    font.close()
+                except Exception:
+                    continue
+                source = f"{path.resolve()}:{index}".encode("utf-8")
+                identifier = hashlib.sha256(source).hexdigest()[:20]
+                family_source = family.casefold().strip().encode("utf-8")
+                family_identifier = hashlib.sha256(family_source).hexdigest()[:16]
+                records.append(
+                    FontRecord(
+                        identifier,
+                        family_identifier,
+                        family,
+                        localized_family,
+                        full_name,
+                        localized_full_name,
+                        style,
+                        localized_style,
+                        max(1, min(weight, 1000)),
+                        path,
+                        index,
+                    )
+                )
+                _set_font_scan_status(state="scanning", completed=completed - 1, total=len(paths), current=localized_full_name, cache=False)
+            _set_font_scan_status(state="scanning", completed=completed, total=len(paths), current=path.name, cache=False)
+        # ここから先はフォント解析ではなく、一覧の整列とキャッシュ準備。完了率だけを
+        # 100% にしたまま待たせないよう、UIへ明示的に後処理中であることを知らせる。
+        _set_font_scan_status(state="finalizing", completed=len(paths), total=len(paths), current="一覧を整理しています…", cache=False)
+        catalog = tuple(
+            sorted(
+                records,
+                key=lambda record: (
+                    record.localized_family.casefold(),
+                    record.weight,
+                    record.localized_style.casefold(),
+                    str(record.path),
+                ),
             )
         )
-    return tuple(
-        sorted(
-            records,
-            key=lambda record: (
-                record.localized_family.casefold(),
-                record.weight,
-                record.localized_style.casefold(),
-                str(record.path),
-            ),
-        )
-    )
+        _set_font_scan_status(state="ready", completed=len(paths), total=len(paths), current="", cache=False)
+        _save_font_catalog_cache_in_background(paths, catalog)
+        return catalog
+    except Exception as error:
+        _set_font_scan_status(state="failed", current=str(error), cache=False)
+        raise
 
 
 def available_fonts() -> list[dict[str, str | int]]:

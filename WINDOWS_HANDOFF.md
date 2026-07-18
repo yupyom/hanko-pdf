@@ -17,15 +17,29 @@
 3. `python -m unittest discover -s tests -q` を実行します。`dev_docs/sample` がない場合、ローカル開発サンプルの検査だけがskipになります。
 4. `python launcher.py` で、PDF読込・印影作成・保存ダイアログ・Windowsのフォント検出を手動確認します。
 
-## 実装が必要な差分
+## Windows ビルド
 
-現行の `Hanko PDF.spec` はmacOS専用です。Windows向けには別specを作ってください。
+- macOS専用の `Hanko PDF.spec` とは別に、Windows one-folder 用の `packaging/windows/Hanko PDF.spec` を用意しています。`CoreText` のhidden importやmacOSの `BUNDLE` は含みません。
+- `packaging/windows/build.ps1` は `assets/hanko-icon.png` からビルド時に `.ico` を生成し、Windows用の `EXE`/`COLLECT` を作成します。
+- 凍結したWindowsアプリの設定・一時PDFは、`%LOCALAPPDATA%/Hanko PDF` に保存します。`HANKO_DATA_DIR` を指定すると保存先を変更できます。
+- フォント一覧は `%LOCALAPPDATA%/Hanko PDF/font-catalog-v1.json` にキャッシュします。フォントファイルのパス・更新時刻・サイズが前回と一致する場合、次回起動時はメタデータ解析を省略します。フォントの追加・更新・削除時は自動的に再走査されます。キャッシュ保存は一覧を利用可能にした後でバックグラウンド実行するため、保存失敗や遅延で画面を待たせません。
 
-- `CoreText` のhidden importをWindows specへ入れない。
-- macOSの`BUNDLE`と`.icns`ではなく、Windows用の`EXE`/`COLLECT`と`.ico`を使う。アイコンの元画像は `assets/hanko-icon.png`。
-- `app.py` の凍結アプリ用データ保存先を、Windowsでは書込み可能な `%LOCALAPPDATA%/Hanko PDF` 等へ変更する。アプリ本体のフォルダへ設定・一時PDFを書き込まない。
-- `launcher.py` のpywebview保存ダイアログはWindowsでも利用できる見込みだが、文字列／配列で返るパスを実機で確認する。
-- `stamp_generator.py` のWindowsフォントフォルダ走査と、ユーザーがインストールしたフォントの表示を実機で確認する。
+Python 3.12 x64 の仮想環境で次を実行すると、`dist/Hanko PDF/` に one-folder 配布物が生成されます。
+
+```powershell
+python -m pip install -r requirements.txt
+.\packaging\windows\build.ps1 -Python .\.hanko-venv-windows\Scripts\python.exe
+```
+
+実機では `python launcher.py` または `dist/Hanko PDF/Hanko PDF.exe` を起動し、PDF読込・印影作成・保存ダイアログ・ユーザーが追加したフォントの表示を確認してください。特に pywebview 保存ダイアログが文字列／配列のどちらでパスを返すかを確認します。
+
+## フォント読込に関するクロスプラットフォームの知見
+
+- pywebviewのウィンドウ生成と同時に重いフォント走査を開始すると、WindowsではUIメッセージ処理が遅延し、OSから「応答なし」と判定されることがあります。フォント走査は、印影作成画面を初めて開いた後に開始してください。
+- UIのOS判定はブラウザのUser-Agentではなく、バックエンドの `sys.platform` と凍結アプリかどうかをAPIで渡して行います。これにより、Windows用の進捗表示を確実に有効にできます。
+- フォント一覧は先にメモリ上で利用可能にし、キャッシュの書込みは後続のバックグラウンド処理に分離します。キャッシュI/Oやセキュリティソフトによる遅延が、UIや `/api/fonts` の応答を止めないようにします。
+- ローディング用の要素は `hidden` 属性を確実に反映するCSSを用意してください。今回、一覧の取得自体は完了していたにもかかわらず、オーバーレイが残って処理中に見える問題がありました。
+- リリース前には、初回起動、初回の印影作成画面、キャッシュ生成後の二回目の印影作成画面を、各OSで手動確認してください。
 
 最初の配布物はPyInstallerのone-folder版をInno Setup等のインストーラーへまとめる方法が扱いやすいです。公開配布前には、インストーラーと実行ファイルをAuthenticode署名し、タイムスタンプを付与します。証明書、PFX、トークン、パスワードはリポジトリへ入れません。
 

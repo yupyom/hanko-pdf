@@ -353,6 +353,13 @@
       <div id="studioPreviewPaper" class="stamp-preview-paper" tabindex="0" aria-label="SVGをドロップ、または配置済みSVGを選択できる印影プレビュー">
         <img id="studioPreview" alt="作成中の印影プレビュー">
         <div id="studioSvgPreviewAssets" class="studio-svg-preview-assets" aria-label="プレビュー内の配置済みSVG"></div>
+        <div id="studioFontLoading" class="font-loading-overlay" role="status" aria-live="polite" hidden>
+          <div class="font-loading-card">
+            <p id="studioFontLoadingLabel">Windows のフォントを読み込んでいます…</p>
+            <div class="font-loading-progress" aria-hidden="true"><span id="studioFontLoadingBar"></span></div>
+            <p id="studioFontLoadingDetail" class="font-loading-detail"></p>
+          </div>
+        </div>
       </div>
       <p id="studioCaption" class="stamp-caption">［猫田］</p>
       <div class="studio-actions">

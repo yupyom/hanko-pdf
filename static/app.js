@@ -14,6 +14,9 @@ const state = {
   registeredStamps: [],
   registeredStampsLoaded: false,
   fonts: [],
+  fontsLoaded: false,
+  fontsLoading: false,
+  fontStatusTimer: null,
   settings: { ...DEFAULT_SETTINGS },
   batchFiles: [],
   studio: {
@@ -43,7 +46,7 @@ const elements = {
   glyphXValue: $("#glyphXValue"), glyphYValue: $("#glyphYValue"), glyphScaleXValue: $("#glyphScaleXValue"), glyphScaleYValue: $("#glyphScaleYValue"), glyphXLabel: $("#glyphXLabel"), glyphYLabel: $("#glyphYLabel"), glyphScaleXLabel: $("#glyphScaleXLabel"), glyphScaleYLabel: $("#glyphScaleYLabel"), glyphEditorHint: $("#glyphEditorHint"), studioGlyphScaleLock: $("#studioGlyphScaleLock"), resetSelectedGlyph: $("#resetSelectedGlyph"), resetAllGlyphs: $("#resetAllGlyphs"),
   studioGlobalScaleX: $("#studioGlobalScaleX"), studioGlobalScaleY: $("#studioGlobalScaleY"), studioGlobalScaleLock: $("#studioGlobalScaleLock"), studioGlobalLineSpacing: $("#studioGlobalLineSpacing"), studioGlobalLineSpacingField: $("#studioGlobalLineSpacingField"), studioGlobalLetterSpacing: $("#studioGlobalLetterSpacing"), studioGlobalLetterSpacingField: $("#studioGlobalLetterSpacingField"), globalScaleXValue: $("#globalScaleXValue"), globalScaleYValue: $("#globalScaleYValue"), globalScaleXLabel: $("#globalScaleXLabel"), globalScaleYLabel: $("#globalScaleYLabel"), globalLineSpacingValue: $("#globalLineSpacingValue"), globalLetterSpacingValue: $("#globalLetterSpacingValue"), globalTextHint: $("#globalTextHint"), resetGlobalText: $("#resetGlobalText"),
   studioSvgInput: $("#studioSvgInput"), studioSvgPicker: $("#studioSvgPicker"), studioSvgAssetList: $("#studioSvgAssetList"), studioSvgAssetControls: $("#studioSvgAssetControls"), studioSvgAssetX: $("#studioSvgAssetX"), studioSvgAssetY: $("#studioSvgAssetY"), studioSvgAssetSize: $("#studioSvgAssetSize"), studioSvgColorFill: $("#studioSvgColorFill"), studioSvgColorStroke: $("#studioSvgColorStroke"), studioSvgColorInherited: $("#studioSvgColorInherited"), svgAssetXValue: $("#svgAssetXValue"), svgAssetYValue: $("#svgAssetYValue"), svgAssetSizeValue: $("#svgAssetSizeValue"), removeStudioSvgAsset: $("#removeStudioSvgAsset"),
-  studioPreview: $("#studioPreview"), studioPreviewPaper: $("#studioPreviewPaper"), studioSvgPreviewAssets: $("#studioSvgPreviewAssets"), studioCaption: $("#studioCaption"), studioFormatBadge: $("#studioFormatBadge"), studioStatus: $("#studioStatus"), useStudioStamp: $("#useStudioStamp"), downloadStudioSvg: $("#downloadStudioSvg"),
+  studioPreview: $("#studioPreview"), studioPreviewPaper: $("#studioPreviewPaper"), studioSvgPreviewAssets: $("#studioSvgPreviewAssets"), studioFontLoading: $("#studioFontLoading"), studioFontLoadingLabel: $("#studioFontLoadingLabel"), studioFontLoadingBar: $("#studioFontLoadingBar"), studioFontLoadingDetail: $("#studioFontLoadingDetail"), studioCaption: $("#studioCaption"), studioFormatBadge: $("#studioFormatBadge"), studioStatus: $("#studioStatus"), useStudioStamp: $("#useStudioStamp"), downloadStudioSvg: $("#downloadStudioSvg"),
   help: $("#helpDialog"), openHelp: $("#openHelp"), closeHelp: $("#closeHelp"), about: $("#aboutDialog"), openAbout: $("#openAbout"), closeAbout: $("#closeAbout"),
 };
 
@@ -145,16 +148,67 @@ async function updateSettings() {
 }
 
 async function loadFonts() {
+  if (state.fontsLoaded || state.fontsLoading) return;
+  state.fontsLoading = true;
+  startFontProgressPolling();
   setStudioStatus("フォントを準備しています…");
   try {
-    const response = await fetch("/api/fonts");
+    let response;
+    do {
+      response = await fetch("/api/fonts");
+      if (response.status === 202) await new Promise((resolve) => window.setTimeout(resolve, 350));
+    } while (response.status === 202);
     if (!response.ok) throw new Error(await readError(response));
     const data = await response.json();
     state.fonts = Array.isArray(data.fonts) ? data.fonts : [];
+    state.fontsLoaded = true;
   } catch (error) {
     setStudioStatus(`フォント一覧を読み込めませんでした: ${error.message}`, true);
+  } finally {
+    state.fontsLoading = false;
+    stopFontProgressPolling();
+    renderStudioFonts();
   }
-  renderStudioFonts();
+}
+
+function updateFontLoading(status) {
+  const show = status.platform === "win32" && status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
+  elements.studioFontLoading.hidden = !show;
+  if (!show) return;
+  const completed = Number(status.completed) || 0;
+  const total = Number(status.total) || 0;
+  const progress = total ? Math.max(2, Math.min(100, completed / total * 100)) : 2;
+  elements.studioFontLoadingLabel.textContent = status.state === "checking_cache"
+    ? "前回のフォント一覧を確認しています…"
+    : status.state === "finalizing"
+      ? "フォント一覧を整理しています…"
+      : "Windows のフォントを読み込んでいます…";
+  elements.studioFontLoadingBar.style.width = `${progress}%`;
+  const count = status.state === "finalizing"
+    ? "メニューを準備しています…"
+    : total ? `${completed} / ${total} ファイル` : "フォントファイルを数えています…";
+  elements.studioFontLoadingDetail.textContent = status.current ? `${count}\n${status.current}` : count;
+}
+
+async function refreshFontProgress() {
+  try {
+    const response = await fetch("/api/font-status");
+    if (response.ok) updateFontLoading(await response.json());
+  } catch {
+    // 表示補助用のポーリングなので、通信失敗はフォント取得本体のエラー表示へ任せる。
+  }
+}
+
+function startFontProgressPolling() {
+  if (state.fontStatusTimer !== null) return;
+  void refreshFontProgress();
+  state.fontStatusTimer = window.setInterval(() => { void refreshFontProgress(); }, 350);
+}
+
+function stopFontProgressPolling() {
+  if (state.fontStatusTimer !== null) window.clearInterval(state.fontStatusTimer);
+  state.fontStatusTimer = null;
+  elements.studioFontLoading.hidden = true;
 }
 
 function currentPageInfo() {
@@ -842,7 +896,10 @@ function showView(view) {
   elements.editorView.hidden = studio;
   elements.studioView.hidden = !studio;
   elements.tabs.forEach((tab) => tab.classList.toggle("is-active", tab.dataset.view === view));
-  if (studio) scheduleStudioPreview();
+  if (studio) {
+    void loadFonts();
+    scheduleStudioPreview();
+  }
 }
 
 function round(value) { return Math.round(value * 10) / 10; }
@@ -1379,4 +1436,4 @@ renderAll();
 renderStudioFormat();
 renderStudioControls();
 renderSvgAssets();
-void Promise.all([loadTemplates(), loadRegisteredStamps(), loadSettings(), loadFonts()]);
+void Promise.all([loadTemplates(), loadRegisteredStamps(), loadSettings()]);

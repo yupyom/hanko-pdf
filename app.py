@@ -12,15 +12,23 @@ import shutil
 import sys
 import uuid
 from pathlib import Path
-from threading import Lock, Thread, current_thread
+from threading import Lock, Thread
 from typing import Any
 
 import fitz  # PyMuPDF
 from fastapi import File, Form, FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from stamp_generator import StampDesignError, available_fonts, create_stamp_svg, parse_design, validate_svg_asset
+from stamp_generator import (
+    StampDesignError,
+    available_fonts,
+    configure_font_catalog_cache,
+    create_stamp_svg,
+    font_scan_status,
+    parse_design,
+    validate_svg_asset,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -34,6 +42,13 @@ def application_data_dir() -> Path:
         return Path(configured_directory).expanduser()
     if getattr(sys, "frozen", False) and sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "Hanko PDF"
+    if getattr(sys, "frozen", False) and sys.platform == "win32":
+        # PyInstaller の one-folder 配下は Program Files へ配置されることがあり、
+        # 設定や一時 PDF の書き込み先としては利用できない。
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return Path(local_app_data) / "Hanko PDF"
+        return Path.home() / "AppData" / "Local" / "Hanko PDF"
     return ROOT
 
 
@@ -48,6 +63,11 @@ BATCH_EXPORT_DIR = EXPORT_DIR / "batches"
 TEMPLATES_PATH = DATA_DIR / "templates.json"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 REGISTERED_STAMPS_PATH = DATA_DIR / "registered-stamps.json"
+
+# Windowsでは全フォントのnameテーブル解析に時間がかかるため、凍結アプリだけは
+# 書込み可能なアプリデータ内に一覧キャッシュを保持する。
+if getattr(sys, "frozen", False) and sys.platform == "win32":
+    configure_font_catalog_cache(DATA_DIR / "font-catalog-v1.json")
 
 MAX_UPLOAD_BYTES = 35 * 1024 * 1024
 MAX_BATCH_FILES = 30
@@ -68,9 +88,9 @@ for directory in (DOCUMENT_DIR, STAMP_DIR, STAMP_DESIGN_ASSET_DIR, REGISTERED_ST
 app = FastAPI(title="Hanko PDF", docs_url=None, redoc_url=None)
 
 
-# フォント一覧は初回のOS／ファイル走査に時間がかかるため、ウィンドウを表示する
-# 前のサーバー起動時点で準備を始める。APIアクセス側は同じスレッドの終了を待つので、
-# 起動直後に印影作成画面を開いても走査を二重に走らせない。
+# フォント一覧は初回のOS／ファイル走査に時間がかかる。Windowsのpywebviewでは
+# 起動直後にこの処理を開始すると、UIメッセージ処理が遅延して「応答なし」と判定
+# されることがあるため、印影作成画面を初めて開いたときにだけ開始する。
 _font_preload_lock = Lock()
 _font_preload_thread: Thread | None = None
 
@@ -98,17 +118,11 @@ def start_font_preload() -> None:
         _font_preload_thread.start()
 
 
-def wait_for_font_preload() -> None:
-    """事前読み込み中なら完了を待ち、同じフォント走査を重複させない。"""
+def font_preload_in_progress() -> bool:
+    """フォント走査中かを返す。APIリクエストは待機させない。"""
     with _font_preload_lock:
         thread = _font_preload_thread
-    if thread is not None and thread is not current_thread():
-        thread.join()
-
-
-@app.on_event("startup")
-def preload_fonts_at_startup() -> None:
-    start_font_preload()
+    return thread is not None and thread.is_alive()
 
 
 def fail(message: str, status_code: int = 400) -> None:
@@ -1095,10 +1109,24 @@ def delete_registered_stamp(stamp_id: str) -> dict[str, bool]:
     return {"deleted": True}
 
 
-@app.get("/api/fonts")
-def get_fonts() -> dict[str, list[dict[str, str | int]]]:
-    wait_for_font_preload()
+@app.get("/api/fonts", response_model=None)
+def get_fonts() -> Any:
+    # join() で待つと、キャッシュI/Oなどの後処理が詰まったときにWebView側まで
+    # 無応答に見える。クライアントには進捗を表示させ、短い間隔で再試行してもらう。
+    start_font_preload()
+    if font_preload_in_progress():
+        return JSONResponse({"pending": True}, status_code=202)
     return {"fonts": available_fonts()}
+
+
+@app.get("/api/font-status")
+def get_font_status() -> dict[str, str | int | bool]:
+    """印影作成画面が表示する、初回フォント走査の進捗。"""
+    return {
+        "platform": sys.platform,
+        "frozen": bool(getattr(sys, "frozen", False)),
+        **font_scan_status(),
+    }
 
 
 @app.get("/api/templates")

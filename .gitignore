@@ -19,6 +19,7 @@ venv/
 # PyInstaller build output
 build/
 dist/
+assets/hanko-icon.ico
 
 # Local signing and notarization automation
 build-signed-mac-app.sh

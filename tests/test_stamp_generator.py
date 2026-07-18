@@ -12,7 +12,19 @@ from fontTools.ttLib import TTFont
 
 import app as app_module
 from app import merge_stamp_keywords, open_vector_stamp, rotated_size, stamp_default_dimensions, stamp_metadata_texts, stamp_source_filename
-from stamp_generator import StampDesignError, _font_sources, _snap_cardinal_segments, available_fonts, create_stamp_svg, font_catalog, parse_design
+from stamp_generator import (
+    FontRecord,
+    StampDesignError,
+    _cached_font_catalog,
+    _font_sources,
+    _save_font_catalog_cache,
+    _snap_cardinal_segments,
+    available_fonts,
+    configure_font_catalog_cache,
+    create_stamp_svg,
+    font_catalog,
+    parse_design,
+)
 
 
 def japanese_font_id() -> str:
@@ -337,6 +349,25 @@ class StampGeneratorTests(unittest.TestCase):
             patch("stamp_generator._font_count", side_effect=lambda path: 2 if path == direct else 1),
         ):
             self.assertEqual(list(_font_sources()), [(direct, 0), (direct, 1), (registered, 0)])
+
+    def test_font_catalog_cache_uses_unchanged_font_manifest(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            font_path = root / "sample.ttf"
+            font_path.write_bytes(b"font")
+            cache_path = root / "font-catalog-v1.json"
+            record = FontRecord(
+                "font-id", "family-id", "Sample", "サンプル", "Sample Regular", "サンプル レギュラー",
+                "Regular", "標準", 400, font_path, 0,
+            )
+            configure_font_catalog_cache(cache_path)
+            try:
+                _save_font_catalog_cache((font_path,), (record,))
+                self.assertEqual(_cached_font_catalog((font_path,)), (record,))
+                font_path.write_bytes(b"changed font")
+                self.assertIsNone(_cached_font_catalog((font_path,)))
+            finally:
+                configure_font_catalog_cache(None)
 
     def test_global_scales_and_negative_spacing_accept_full_range(self) -> None:
         payload = self.base() | {
@@ -680,6 +711,29 @@ class StampGeneratorTests(unittest.TestCase):
 
 
 class FontPreloadTests(unittest.TestCase):
+    def test_frozen_windows_uses_local_app_data(self) -> None:
+        with (
+            patch.object(app_module.sys, "frozen", True, create=True),
+            patch.object(app_module.sys, "platform", "win32"),
+            patch.dict(app_module.os.environ, {"LOCALAPPDATA": r"C:\\Users\\TestUser\\AppData\\Local"}, clear=True),
+        ):
+            self.assertEqual(
+                app_module.application_data_dir(),
+                Path(r"C:\\Users\\TestUser\\AppData\\Local") / "Hanko PDF",
+            )
+
+    def test_font_status_reports_runtime_and_scan_state(self) -> None:
+        scan = {"state": "scanning", "completed": 12, "total": 40, "current": "YuGothM.ttc", "cache": False}
+        with (
+            patch.object(app_module.sys, "frozen", True, create=True),
+            patch.object(app_module.sys, "platform", "win32"),
+            patch.object(app_module, "font_scan_status", return_value=scan),
+        ):
+            self.assertEqual(
+                app_module.get_font_status(),
+                {"platform": "win32", "frozen": True, **scan},
+            )
+
     def test_start_font_preload_starts_one_daemon_thread(self) -> None:
         with (
             patch.object(app_module, "_font_preload_thread", None),
@@ -695,23 +749,32 @@ class FontPreloadTests(unittest.TestCase):
         )
         thread.start.assert_called_once_with()
 
-    def test_font_endpoint_waits_for_background_preload(self) -> None:
-        class WaitingThread:
-            def __init__(self) -> None:
-                self.joined = False
+    def test_font_endpoint_returns_pending_while_background_preload_runs(self) -> None:
+        class RunningThread:
+            def is_alive(self) -> bool:
+                return True
 
-            def join(self) -> None:
-                self.joined = True
+        with (
+            patch.object(app_module, "_font_preload_thread", RunningThread()),
+            patch.object(app_module, "available_fonts") as load_fonts,
+        ):
+            response = app_module.get_fonts()
 
-        thread = WaitingThread()
+        self.assertEqual(response.status_code, 202)
+        load_fonts.assert_not_called()
+
+    def test_font_endpoint_returns_fonts_after_background_preload(self) -> None:
+        class FinishedThread:
+            def is_alive(self) -> bool:
+                return False
+
         fonts = [{"id": "font-1", "family": "Test"}]
         with (
-            patch.object(app_module, "_font_preload_thread", thread),
+            patch.object(app_module, "_font_preload_thread", FinishedThread()),
             patch.object(app_module, "available_fonts", return_value=fonts) as load_fonts,
         ):
             response = app_module.get_fonts()
 
-        self.assertTrue(thread.joined)
         load_fonts.assert_called_once_with()
         self.assertEqual(response, {"fonts": fonts})
 

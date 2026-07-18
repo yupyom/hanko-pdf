@@ -162,6 +162,13 @@ input[type="number"]:focus, select:focus { border-color: var(--accent); box-shad
 .stamp-preview-paper:focus-visible { box-shadow: 0 0 0 3px rgba(11,117,106,.22), 0 14px 36px rgba(24,45,45,.13); }
 .stamp-preview-paper img { position: relative; z-index: 0; width: 100%; height: 100%; object-fit: contain; }
 .studio-svg-preview-assets { position: absolute; z-index: 1; inset: clamp(18px, 4vw, 43px); }
+.font-loading-overlay { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 28px; background: rgba(255,255,255,.88); }
+.font-loading-overlay[hidden] { display: none !important; }
+.font-loading-card { width: min(330px, 100%); padding: 20px; border: 1px solid #d9e0de; box-shadow: 0 10px 28px rgba(24,45,45,.13); background: #fff; text-align: center; }
+.font-loading-card p { margin: 0; color: var(--ink); font-size: 13px; font-weight: 750; line-height: 1.5; }
+.font-loading-progress { height: 7px; margin: 14px 0 10px; overflow: hidden; border-radius: 99px; background: #e4ecea; }
+.font-loading-progress span { display: block; width: 2%; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
+.font-loading-card .font-loading-detail { min-height: 2.9em; color: var(--muted); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
 .studio-svg-preview-asset { position: absolute; min-width: 12px; min-height: 12px; padding: 0; border: 1px dashed transparent; border-radius: 4px; background: transparent; outline: none; }
 .studio-svg-preview-asset:hover, .studio-svg-preview-asset.is-active { border-color: var(--accent); background: rgba(11,117,106,.08); box-shadow: 0 0 0 2px rgba(11,117,106,.16); }
 .studio-svg-preview-asset:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(11,117,106,.28); }
