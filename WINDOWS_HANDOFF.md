@@ -35,10 +35,18 @@ python -m pip install -r requirements.txt
 
 ## フォント読込に関するクロスプラットフォームの知見
 
-- pywebviewのウィンドウ生成と同時に重いフォント走査を開始すると、WindowsではUIメッセージ処理が遅延し、OSから「応答なし」と判定されることがあります。フォント走査は、印影作成画面を初めて開いた後に開始してください。
-- UIのOS判定はブラウザのUser-Agentではなく、バックエンドの `sys.platform` と凍結アプリかどうかをAPIで渡して行います。これにより、Windows用の進捗表示を確実に有効にできます。
+- macOSなどでは、凍結アプリの起動時からフォントカタログをバックグラウンドで準備します。初回の「印影を作る」はローダーを表示し、キャッシュ生成後は速やかに開きます。
+- Windowsの凍結版では、フォント走査を印影作成画面が初めて開かれたときに開始します。ローダーをDOMへ表示してから32msだけ制御を戻し、WebView2へ先に描画機会を与えます。
+- 凍結Windows版のWebView2 User Data Folder (UDF) は、`%LOCALAPPDATA%/Hanko PDF/webview-sessions/<PID>` のプロセス専用パスを使い、`private_mode=True` で通常終了時に破棄します。Microsoftは通常、インストール型Win32アプリにユーザーごとの固定UDFを推奨しています（[WebView2 user data folders](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/user-data-folder)）。しかしpywebview 6.1のMSIX実機試験では、書込み可能な固定UDFを `private_mode=False` で使うと、新規UDFでも `EnsureCoreWebView2Async` が完了せずウィンドウ表示前に停止しました。pywebview 6.2.1の公式wheelも比較しましたが、該当するWebView2生成コードに修正はありません。Hanko PDFはCookie・LocalStorageを永続データに使わず、設定・登録印影・フォントカタログをUDF外へ保存するため、Windowsでは再利用を捨てて起動の分離を優先します。PIDを含めることで、強制終了後に前回のWebView2子プロセスが残っても競合しません。
+- Windowsの凍結版の重いフォント走査とキャッシュ manifest の照合は、WebView2・FastAPIと同じPythonプロセス内のスレッドではなく子プロセスで実行します。進捗と検証済みのフォントカタログをキューで親プロセスへ返すため、特定フォントの解析・I/O・フォントディレクトリ列挙が遅延しても `/api/font-status`、キャッシュ利用時の `/api/fonts`、UIを止めません。macOSなどは従来どおり起動時バックグラウンドスレッドでプリロードします。
+- `/api/fonts` は子プロセスへ `join()` せず、読込中はHTTP 202と進捗を返します。ブラウザは同じAPIを短い間隔で再試行するため、フォント名・件数・現在処理中のファイルを表示でき、別の進捗ポーリングを並行実行しません。一時的な通信失敗は3回まで再試行します。
+- 起動時の `/api/font-status` はPromiseを共有して二重取得を防ぎ、続くテンプレート・登録済み印影・設定の取得も直列化します。ただし起動画面を操作禁止にはしません。「アプリを準備しています…」オーバーレイと固定1.5秒待機は、WebView2初期化停止を隠すだけで操作不能に見えるため廃止しました。
+- 実機スタックで、フォント処理中の停止とは別に、ページのHTTP要求がFastAPIへ一度も到達しないWebView2初期化段階の停止を確認しました。この停止はUvicornやフォントキャッシュではなくUDFとpywebview初期化の問題です。イベントループ差替え、`Connection: close`、送信タイムアウト、WindowsだけのpywebviewネイティブAPI迂回は根本原因を解消せず、共通コードを複雑にしたため採用しません。
+- pywebview 6.1は `js_api` オブジェクトのアンダースコアで始まらない属性を再帰的に走査します。保存ダイアログAPIがWebViewの `Window` 本体を公開属性 `window` に保持すると、起動時のAPI生成が循環的で巨大なオブジェクトグラフへ入り、Windowsではウィンドウのメッセージ処理とページ読込を止めました。Window参照は `_window` に保持し、JavaScriptへは保存用メソッドだけを公開します。この修正は全OS共通です。
+- 実機解析用の同期ファイルログは、それ自体がI/O待ちを作るため通常ビルドへ含めません。
+- UIのOS判定はブラウザのUser-Agentではなく、バックエンドの `sys.platform` と凍結アプリかどうかをAPIで渡して行います。これにより、Windows用の描画待機と進捗表示を確実に有効にできます。
+- プレビュー画像は生成前に非表示にし、ローダーはフォント一覧取得では閉じません。有効なSVGプレビューのBlob URLを設定できた時点、または明確なエラー表示時だけ閉じます。
 - フォント一覧は先にメモリ上で利用可能にし、キャッシュの書込みは後続のバックグラウンド処理に分離します。キャッシュI/Oやセキュリティソフトによる遅延が、UIや `/api/fonts` の応答を止めないようにします。
-- ローディング用の要素は `hidden` 属性を確実に反映するCSSを用意してください。今回、一覧の取得自体は完了していたにもかかわらず、オーバーレイが残って処理中に見える問題がありました。
 - リリース前には、初回起動、初回の印影作成画面、キャッシュ生成後の二回目の印影作成画面を、各OSで手動確認してください。
 
 ## Microsoft Store 向け MSIX
@@ -53,7 +61,7 @@ Partner Center で予約済みの Identity は次のとおりです。将来の�
 - Package Family Name: `yupyom.HankoPDF_fx9rea1yggdcp`
 - Microsoft Store ID: `9P6SK13W5K4F`
 
-`packaging/windows/msix/build-msix.ps1` は、Windows one-folder ビルドを入力に、Store 用アイコン、`AppxManifest.xml`、未署名の `.msix` と `.msixupload` を作成します。pywebview / WebView2 のプロファイルは、凍結版の書込み可能な `%LOCALAPPDATA%/Hanko PDF/webview` へ明示的に保存します。
+`packaging/windows/msix/build-msix.ps1` は、Windows one-folder ビルドを入力に、Store 用アイコン、`AppxManifest.xml`、未署名の `.msix` と `.msixupload` を作成します。pywebview / WebView2 は、凍結版でプロセス専用の書込み可能な一時UDFを使います。アプリの永続データは `%LOCALAPPDATA%/Hanko PDF` のUDF外へ保存します。
 
 ```powershell
 .\packaging\windows\msix\build-msix.ps1 `
