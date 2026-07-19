@@ -9,6 +9,7 @@ import shutil
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +27,11 @@ def webview_start_options() -> dict[str, Any]:
         # このアプリの永続データはDATA_DIR直下へ独自保存しており、WebView2のCookieや
         # LocalStorageへ依存しない。MSIX実機では固定UDF + private_mode=Falseが不定期に
         # EnsureCoreWebView2Asyncで停止したため、終了時に破棄されるプロセス専用UDFを使う。
-        # PIDを含めることで、強制終了後のWebView2子プロセスとも競合しない。
+        # PIDにUUIDを加え、異常終了したフォルダが残った後にPIDが再利用されても
+        # 過去のUDFを絶対に再利用しない。
+        session_name = f"{os.getpid()}-{uuid.uuid4()}"
         return {
-            "storage_path": str(DATA_DIR / "webview-sessions" / str(os.getpid())),
+            "storage_path": str(DATA_DIR / "webview-sessions" / session_name),
             "private_mode": True,
         }
     return {}

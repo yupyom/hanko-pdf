@@ -780,7 +780,7 @@ class FontPreloadTests(unittest.TestCase):
 
         process_class.assert_called_once_with(
             target=app_module._preload_frozen_windows_fonts,
-            args=(queue, "C:\\app-data\\font-catalog-v1.json"),
+            args=(queue, str(Path("C:/app-data") / "font-catalog-v1.json")),
             name="hanko-font-preload",
             daemon=True,
         )

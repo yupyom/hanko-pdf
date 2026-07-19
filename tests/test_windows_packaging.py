@@ -46,10 +46,21 @@ class WindowsPackagingTests(unittest.TestCase):
             patch.object(launcher_module.sys, "frozen", True, create=True),
             patch.object(launcher_module, "DATA_DIR", Path("C:/app-data")),
             patch.object(launcher_module.os, "getpid", return_value=1234),
+            patch.object(launcher_module.uuid, "uuid4", side_effect=["test-uuid-1", "test-uuid-2"]),
         ):
             self.assertEqual(
                 launcher_module.webview_start_options(),
-                {"storage_path": "C:\\app-data\\webview-sessions\\1234", "private_mode": True},
+                {
+                    "storage_path": str(Path("C:/app-data") / "webview-sessions" / "1234-test-uuid-1"),
+                    "private_mode": True,
+                },
+            )
+            self.assertEqual(
+                launcher_module.webview_start_options(),
+                {
+                    "storage_path": str(Path("C:/app-data") / "webview-sessions" / "1234-test-uuid-2"),
+                    "private_mode": True,
+                },
             )
 
         with (
