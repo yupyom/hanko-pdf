@@ -756,6 +756,23 @@ button.sample-card {
   object-fit: contain;
 }
 
+.donation-content {
+  min-width: 0;
+}
+
+.donation-box .donation-button {
+  width: fit-content;
+  margin-top: 18px;
+  color: #fff;
+  background: var(--red);
+}
+
+.donation-box .donation-note {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .site-footer {
   display: flex;
   align-items: center;
@@ -1018,6 +1035,10 @@ button.sample-card {
   .donation-box img {
     width: 70px;
     height: 70px;
+  }
+
+  .donation-box .donation-button {
+    width: 100%;
   }
 
   .site-footer {
