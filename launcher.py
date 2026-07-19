@@ -2,35 +2,57 @@
 
 from __future__ import annotations
 
+import multiprocessing
+import os
 import socket
 import shutil
+import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 import uvicorn
 
-from app import app, batch_export_files, export_path, stamp_path
+from app import DATA_DIR, app, batch_export_files, export_path, stamp_path
 
 
 HOST = "127.0.0.1"
+
+
+def webview_start_options() -> dict[str, Any]:
+    """凍結Windows版だけに、プロセス専用のWebView2プロファイルを指定する。"""
+    if sys.platform == "win32" and getattr(sys, "frozen", False):
+        # このアプリの永続データはDATA_DIR直下へ独自保存しており、WebView2のCookieや
+        # LocalStorageへ依存しない。MSIX実機では固定UDF + private_mode=Falseが不定期に
+        # EnsureCoreWebView2Asyncで停止したため、終了時に破棄されるプロセス専用UDFを使う。
+        # PIDにUUIDを加え、異常終了したフォルダが残った後にPIDが再利用されても
+        # 過去のUDFを絶対に再利用しない。
+        session_name = f"{os.getpid()}-{uuid.uuid4()}"
+        return {
+            "storage_path": str(DATA_DIR / "webview-sessions" / session_name),
+            "private_mode": True,
+        }
+    return {}
 
 
 class NativeFileApi:
     """WebViewから呼び出す、macOSのネイティブ保存ダイアログ。"""
 
     def __init__(self) -> None:
-        self.window: Any | None = None
+        # pywebviewはjs_apiの公開属性を再帰的に走査する。Window本体を公開属性へ
+        # 入れると循環的なオブジェクトグラフを解析して起動を止めるため、必ず非公開にする。
+        self._window: Any | None = None
 
     def save_export(self, export_id: str, suggested_filename: str = "hanko-stamped.pdf") -> dict[str, bool]:
         import webview
 
-        if self.window is None:
+        if self._window is None:
             raise RuntimeError("保存ダイアログを初期化できませんでした。")
 
         source = export_path(export_id)
-        selected = self.window.create_file_dialog(
+        selected = self._window.create_file_dialog(
             webview.FileDialog.SAVE,
             directory=str(Path.home() / "Downloads"),
             save_filename=suggested_filename,
@@ -51,12 +73,12 @@ class NativeFileApi:
         """一括生成したPDFをフォルダへ保存する。既存ファイルは絶対に上書きしない。"""
         import webview
 
-        if self.window is None:
+        if self._window is None:
             raise RuntimeError("保存ダイアログを初期化できませんでした。")
         if collision not in {"rename", "cancel"}:
             raise RuntimeError("重複時の扱いが正しくありません。")
 
-        selected = self.window.create_file_dialog(
+        selected = self._window.create_file_dialog(
             webview.FileDialog.FOLDER,
             directory=str(Path.home() / "Downloads"),
         )
@@ -96,7 +118,7 @@ class NativeFileApi:
         """作成済みSVG印影を、ユーザーが選んだ場所へコピーする。"""
         import webview
 
-        if self.window is None:
+        if self._window is None:
             raise RuntimeError("保存ダイアログを初期化できませんでした。")
         source = stamp_path(stamp_id)
         if source.suffix.lower() != ".svg":
@@ -104,7 +126,7 @@ class NativeFileApi:
         filename = Path(suggested_filename).name or "hanko-stamp.svg"
         if Path(filename).suffix.lower() != ".svg":
             filename = f"{filename}.svg"
-        selected = self.window.create_file_dialog(
+        selected = self._window.create_file_dialog(
             webview.FileDialog.SAVE,
             directory=str(Path.home() / "Downloads"),
             save_filename=filename,
@@ -159,8 +181,11 @@ def main() -> None:
             min_size=(960, 650),
             js_api=native_api,
         )
-        native_api.window = window
-        webview.start()
+        native_api._window = window
+        # MSIXでは pywebview の既定プロファイル（Roaming AppData）がWebView2から
+        # 書込み不能・初期化待ちになることがある。Windowsの凍結版だけ、アプリが
+        # 管理する書込み可能な場所を指定し、macOSと開発起動の既定動作は変えない。
+        webview.start(**webview_start_options())
     finally:
         server.should_exit = True
         listener.close()
@@ -168,4 +193,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

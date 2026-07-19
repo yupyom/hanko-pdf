@@ -6,7 +6,9 @@ import base64
 import html
 import json
 import math
+from multiprocessing import Process, Queue
 import os
+from queue import Empty
 import re
 import shutil
 import sys
@@ -27,7 +29,10 @@ from stamp_generator import (
     create_stamp_svg,
     font_scan_status,
     parse_design,
+    preload_font_catalog,
+    set_font_scan_status,
     validate_svg_asset,
+    warm_font_catalog_cache,
 )
 
 
@@ -94,7 +99,9 @@ app = FastAPI(title="Hanko PDF", docs_url=None, redoc_url=None)
 # されることがあるため、Windowsでは印影作成画面を初めて開いたときに開始する。
 # macOSなどでは起動直後からバックグラウンドで準備する。
 _font_preload_lock = Lock()
-_font_preload_thread: Thread | None = None
+_font_preload_thread: Thread | Process | None = None
+_font_preload_status_queue: Queue[Any] | None = None
+_font_preloaded_values: list[dict[str, str | int]] | None = None
 
 
 def _preload_fonts() -> None:
@@ -106,22 +113,63 @@ def _preload_fonts() -> None:
         pass
 
 
+def _preload_frozen_windows_fonts(status_queue: Queue[Any], cache_path: str) -> None:
+    """WebView2 と GIL を競合させない、凍結 Windows 用のフォント走査ワーカー。"""
+    try:
+        records = warm_font_catalog_cache(Path(cache_path), status_queue.put)
+        status_queue.put({"kind": "catalog", "records": records})
+    except Exception as error:
+        status_queue.put({"state": "failed", "completed": 0, "total": 0, "current": str(error), "cache": False})
+
+
+def _drain_font_preload_status() -> None:
+    """子プロセスが送った進捗を、APIが返す親側の状態へ反映する。"""
+    global _font_preloaded_values
+    with _font_preload_lock:
+        status_queue = _font_preload_status_queue
+    if status_queue is None:
+        return
+    while True:
+        try:
+            status = status_queue.get_nowait()
+        except Empty:
+            return
+        if isinstance(status, dict) and status.get("kind") == "catalog":
+            records = status.get("records")
+            if isinstance(records, list):
+                _font_preloaded_values = preload_font_catalog(records)
+        elif isinstance(status, dict):
+            set_font_scan_status(status)
+
+
 def start_font_preload() -> None:
     """フォント一覧の初回走査を、起動を妨げない形で開始する。"""
-    global _font_preload_thread
+    global _font_preload_thread, _font_preload_status_queue, _font_preloaded_values
     with _font_preload_lock:
         if _font_preload_thread is not None:
             return
-        _font_preload_thread = Thread(
-            target=_preload_fonts,
-            name="hanko-font-preload",
-            daemon=True,
-        )
+        if sys.platform == "win32" and getattr(sys, "frozen", False):
+            _font_preloaded_values = None
+            status_queue: Queue[Any] = Queue()
+            _font_preload_status_queue = status_queue
+            _font_preload_thread = Process(
+                target=_preload_frozen_windows_fonts,
+                args=(status_queue, str(DATA_DIR / "font-catalog-v1.json")),
+                name="hanko-font-preload",
+                daemon=True,
+            )
+        else:
+            _font_preload_thread = Thread(
+                target=_preload_fonts,
+                name="hanko-font-preload",
+                daemon=True,
+            )
         _font_preload_thread.start()
 
 
 def font_preload_in_progress() -> bool:
     """フォント走査中かを返す。APIリクエストは待機させない。"""
+    _drain_font_preload_status()
     with _font_preload_lock:
         thread = _font_preload_thread
     return thread is not None and thread.is_alive()
@@ -1118,19 +1166,38 @@ def delete_registered_stamp(stamp_id: str) -> dict[str, bool]:
     return {"deleted": True}
 
 
+def font_catalog_payload() -> dict[str, Any]:
+    """フォント一覧または非ブロッキングな進捗を返す。"""
+    start_font_preload()
+    if sys.platform == "win32" and getattr(sys, "frozen", False):
+        _drain_font_preload_status()
+        if _font_preloaded_values is None:
+            status = font_scan_status()
+            if status.get("state") == "failed":
+                return {"error": str(status.get("current") or "フォント一覧を準備できませんでした。")}
+            return {"pending": True, "status": status}
+        return {"fonts": _font_preloaded_values}
+    if font_preload_in_progress():
+        return {"pending": True, "status": font_scan_status()}
+    return {"fonts": available_fonts()}
+
+
 @app.get("/api/fonts", response_model=None)
 def get_fonts() -> Any:
     # join() で待つと、キャッシュI/Oなどの後処理が詰まったときにWebView側まで
     # 無応答に見える。クライアントには進捗を表示させ、短い間隔で再試行してもらう。
-    start_font_preload()
-    if font_preload_in_progress():
-        return JSONResponse({"pending": True}, status_code=202)
-    return {"fonts": available_fonts()}
+    payload = font_catalog_payload()
+    if "error" in payload:
+        return JSONResponse({"detail": payload["error"]}, status_code=500)
+    if payload.get("pending"):
+        return JSONResponse(payload, status_code=202)
+    return payload
 
 
 @app.get("/api/font-status")
 def get_font_status() -> dict[str, str | int | bool]:
     """印影作成画面が表示する、初回フォント走査の進捗。"""
+    _drain_font_preload_status()
     return {
         "platform": sys.platform,
         "frozen": bool(getattr(sys, "frozen", False)),

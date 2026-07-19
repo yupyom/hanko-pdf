@@ -765,6 +765,27 @@ class FontPreloadTests(unittest.TestCase):
         )
         thread.start.assert_called_once_with()
 
+    def test_frozen_windows_starts_font_preload_in_a_process(self) -> None:
+        with (
+            patch.object(app_module.sys, "platform", "win32"),
+            patch.object(app_module.sys, "frozen", True, create=True),
+            patch.object(app_module, "DATA_DIR", Path("C:/app-data")),
+            patch.object(app_module, "_font_preload_thread", None),
+            patch.object(app_module, "Queue") as queue_class,
+            patch.object(app_module, "Process") as process_class,
+        ):
+            queue = queue_class.return_value
+            process = process_class.return_value
+            app_module.start_font_preload()
+
+        process_class.assert_called_once_with(
+            target=app_module._preload_frozen_windows_fonts,
+            args=(queue, str(Path("C:/app-data") / "font-catalog-v1.json")),
+            name="hanko-font-preload",
+            daemon=True,
+        )
+        process.start.assert_called_once_with()
+
     def test_font_endpoint_returns_pending_while_background_preload_runs(self) -> None:
         class RunningThread:
             def is_alive(self) -> bool:
@@ -793,6 +814,25 @@ class FontPreloadTests(unittest.TestCase):
 
         load_fonts.assert_called_once_with()
         self.assertEqual(response, {"fonts": fonts})
+
+    def test_frozen_windows_font_endpoint_uses_worker_result_without_rescanning(self) -> None:
+        class RunningProcess:
+            def is_alive(self) -> bool:
+                return True
+
+        fonts = [{"id": "font-1", "family": "Test"}]
+        with (
+            patch.object(app_module.sys, "platform", "win32"),
+            patch.object(app_module.sys, "frozen", True, create=True),
+            patch.object(app_module, "_font_preload_thread", RunningProcess()),
+            patch.object(app_module, "_font_preload_status_queue", None),
+            patch.object(app_module, "_font_preloaded_values", fonts),
+            patch.object(app_module, "available_fonts") as load_fonts,
+        ):
+            response = app_module.get_fonts()
+
+        self.assertEqual(response, {"fonts": fonts})
+        load_fonts.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock, Thread
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from xml.etree import ElementTree as ET
 
 import fitz
@@ -167,6 +167,7 @@ class StampDesign:
 
 _font_cache_path: Path | None = None
 _font_cache_lock = Lock()
+_preloaded_font_catalog: tuple[FontRecord, ...] | None = None
 _font_cache_write_lock = Lock()
 _font_cache_write_thread: Thread | None = None
 _font_scan_status_lock = Lock()
@@ -177,13 +178,15 @@ _font_scan_status: dict[str, str | int | bool] = {
     "current": "",
     "cache": False,
 }
+_font_scan_status_listener: Callable[[dict[str, str | int | bool]], None] | None = None
 
 
 def configure_font_catalog_cache(path: Path | None) -> None:
     """フォントメタデータのローカルキャッシュ先を設定する。"""
-    global _font_cache_path
+    global _font_cache_path, _preloaded_font_catalog
     with _font_cache_lock:
         _font_cache_path = path
+        _preloaded_font_catalog = None
         font_catalog.cache_clear()
     _set_font_scan_status(state="idle", completed=0, total=0, current="", cache=False)
 
@@ -194,9 +197,64 @@ def font_scan_status() -> dict[str, str | int | bool]:
         return _font_scan_status.copy()
 
 
+def set_font_scan_status(status: dict[str, str | int | bool]) -> None:
+    """別プロセスのフォント走査進捗を親プロセスへ反映する。"""
+    _set_font_scan_status(**status)
+
+
+def preload_font_catalog(records: list[dict[str, str | int]]) -> list[dict[str, str | int]]:
+    """別プロセスで得たカタログを、親プロセスのメモリへ安全に渡す。
+
+    Windows の凍結版では、キャッシュの manifest 照合でもフォントディレクトリを
+    列挙する。その処理を親プロセスで再実行すると WebView2 の API 応答が止まる
+    ため、ワーカーが検証済みのレコードだけをここで採用する。
+    """
+    global _preloaded_font_catalog
+    catalog: list[FontRecord] = []
+    for value in records:
+        if not isinstance(value, dict):
+            continue
+        try:
+            catalog.append(
+                FontRecord(
+                    identifier=str(value["identifier"]),
+                    family_identifier=str(value["familyIdentifier"]),
+                    family=str(value["family"]),
+                    localized_family=str(value["localizedFamily"]),
+                    full_name=str(value["fullName"]),
+                    localized_full_name=str(value["localizedFullName"]),
+                    style=str(value["style"]),
+                    localized_style=str(value["localizedStyle"]),
+                    weight=max(1, min(int(value["weight"]), 1000)),
+                    path=Path(str(value["path"])),
+                    index=int(value["index"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    with _font_cache_lock:
+        _preloaded_font_catalog = tuple(catalog)
+        font_catalog.cache_clear()
+    _set_font_scan_status(state="ready", completed=len(catalog), total=len(catalog), current="", cache=True)
+    return [record.as_api_value() for record in catalog if not record.family.startswith(".") and not record.localized_family.startswith(".")]
+
+
+def set_font_scan_status_listener(listener: Callable[[dict[str, str | int | bool]], None] | None) -> None:
+    """フォント走査進捗の送信先を、必要な間だけ設定する。"""
+    global _font_scan_status_listener
+    _font_scan_status_listener = listener
+
+
 def _set_font_scan_status(**values: str | int | bool) -> None:
     with _font_scan_status_lock:
         _font_scan_status.update(values)
+        status = _font_scan_status.copy()
+    if _font_scan_status_listener is not None:
+        try:
+            _font_scan_status_listener(status)
+        except Exception:
+            # 進捗通知の失敗で、フォントカタログ本体を失敗させない。
+            pass
 
 
 def _font_directories() -> tuple[Path, ...]:
@@ -426,6 +484,10 @@ def _font_names(font: TTFont, name_id: int, fallback: str) -> tuple[str, str]:
 def font_catalog() -> tuple[FontRecord, ...]:
     """直接のファイル走査とmacOSの登録情報を統合する。壊れたフォントは一覧から除外する。"""
     try:
+        with _font_cache_lock:
+            preloaded_catalog = _preloaded_font_catalog
+        if preloaded_catalog is not None:
+            return preloaded_catalog
         paths = _font_paths()
         _set_font_scan_status(state="checking_cache", completed=0, total=len(paths), current="", cache=False)
         cached_records = _cached_font_catalog(paths)
@@ -502,6 +564,23 @@ def font_catalog() -> tuple[FontRecord, ...]:
 def available_fonts() -> list[dict[str, str | int]]:
     # 先頭が「.」のファミリーはOS内部UI用で、通常のフォント選択画面には表示しない。
     return [record.as_api_value() for record in font_catalog() if not record.family.startswith(".") and not record.localized_family.startswith(".")]
+
+
+def warm_font_catalog_cache(
+    cache_path: Path,
+    report_status: Callable[[dict[str, str | int | bool]], None] | None = None,
+) -> list[dict[str, str | int]]:
+    """別プロセスでフォントを走査し、親が読めるキャッシュを確実に保存する。"""
+    configure_font_catalog_cache(cache_path)
+    set_font_scan_status_listener(report_status)
+    try:
+        paths = _font_paths()
+        catalog = font_catalog()
+        # 子プロセスは終了時にdaemon threadを待たないため、キャッシュ保存は同期で行う。
+        _save_font_catalog_cache(paths, catalog)
+        return [record.as_cache_value() for record in catalog]
+    finally:
+        set_font_scan_status_listener(None)
 
 
 def _font_by_identifier(identifier: Any) -> FontRecord:

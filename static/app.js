@@ -16,7 +16,7 @@ const state = {
   fonts: [],
   fontsLoaded: false,
   fontsLoading: false,
-  fontStatusTimer: null,
+  runtime: {},
   settings: { ...DEFAULT_SETTINGS },
   batchFiles: [],
   studio: {
@@ -151,14 +151,32 @@ async function loadFonts() {
   if (state.fontsLoaded || state.fontsLoading) return;
   state.fontsLoading = true;
   showFontLoading();
-  startFontProgressPolling();
-  setStudioStatus("フォントを準備しています…");
+  const runtime = state.runtime.platform ? state.runtime : await fontRuntime();
+  // Windows の凍結版 WebView2 では、ビュー遷移直後に読込を開始すると
+  // ローダーの描画機会を得られず無応答に見えることがある。バックエンドの
+  // platform/frozen を判定源にして、この組合せだけ短く制御を譲る。
+  if (runtime.platform === "win32" && runtime.frozen) {
+    await new Promise((resolve) => window.setTimeout(resolve, 32));
+  }
+  setStudioStatus(runtime.platform === "win32" && runtime.frozen ? "Windowsの書体を準備しています…" : "フォントを準備しています…");
   try {
+    let retries = 0;
     let response;
-    do {
-      response = await fetch("/api/fonts");
-      if (response.status === 202) await new Promise((resolve) => window.setTimeout(resolve, 350));
-    } while (response.status === 202);
+    while (true) {
+      try {
+        response = await fetch("/api/fonts");
+      } catch (error) {
+        if (retries >= 3) throw error;
+        retries += 1;
+        await new Promise((resolve) => window.setTimeout(resolve, 350 * retries));
+        continue;
+      }
+      retries = 0;
+      if (response.status !== 202) break;
+      const pending = await response.json();
+      if (pending.status) updateFontLoading({ ...runtime, ...pending.status });
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
+    }
     if (!response.ok) throw new Error(await readError(response));
     const data = await response.json();
     state.fonts = Array.isArray(data.fonts) ? data.fonts : [];
@@ -168,15 +186,38 @@ async function loadFonts() {
     hideFontLoading();
   } finally {
     state.fontsLoading = false;
-    stopFontProgressPolling();
     renderStudioFonts();
   }
 }
 
+async function fontRuntime() {
+  if (state.runtime.platform) return state.runtime;
+  if (fontRuntime.promise) return fontRuntime.promise;
+  fontRuntime.promise = (async () => {
+    try {
+      const response = await fetch("/api/font-status");
+      if (!response.ok) return {};
+      const status = await response.json();
+      state.runtime = status;
+      updateFontLoading(status);
+      return status;
+    } catch {
+      return {};
+    } finally {
+      fontRuntime.promise = null;
+    }
+  })();
+  return fontRuntime.promise;
+}
+
+fontRuntime.promise = null;
+
 function updateFontLoading(status) {
-  const show = status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
-  elements.studioFontLoading.hidden = !show;
-  if (!show) return;
+  const showProgress = status.frozen && ["checking_cache", "scanning", "finalizing"].includes(status.state);
+  // ローダーはフォント一覧の取得完了だけでは閉じない。実プレビューまたは
+  // 明確なエラーが表示されるまで、showFontLoading / hideFontLoading が管理する。
+  if (!showProgress) return;
+  elements.studioFontLoading.hidden = false;
   const completed = Number(status.completed) || 0;
   const total = Number(status.total) || 0;
   const progress = total ? Math.max(2, Math.min(100, completed / total * 100)) : 2;
@@ -206,26 +247,6 @@ function showFontLoading() {
 
 function hideFontLoading() {
   elements.studioFontLoading.hidden = true;
-}
-
-async function refreshFontProgress() {
-  try {
-    const response = await fetch("/api/font-status");
-    if (response.ok) updateFontLoading(await response.json());
-  } catch {
-    // 表示補助用のポーリングなので、通信失敗はフォント取得本体のエラー表示へ任せる。
-  }
-}
-
-function startFontProgressPolling() {
-  if (state.fontStatusTimer !== null) return;
-  void refreshFontProgress();
-  state.fontStatusTimer = window.setInterval(() => { void refreshFontProgress(); }, 350);
-}
-
-function stopFontProgressPolling() {
-  if (state.fontStatusTimer !== null) window.clearInterval(state.fontStatusTimer);
-  state.fontStatusTimer = null;
 }
 
 function currentPageInfo() {
@@ -907,6 +928,7 @@ async function refreshStudioPreview(version) {
   } catch (error) {
     if (version !== state.studio.version) return;
     setStudioStatus(error.message, true);
+    hideFontLoading();
   }
 }
 
@@ -919,6 +941,14 @@ function showView(view) {
     void loadFonts();
     scheduleStudioPreview();
   }
+}
+
+async function initializeApplication() {
+  state.runtime = await fontRuntime();
+  // 起動直後のローカル通信を一度に集中させない。
+  await loadTemplates();
+  await loadRegisteredStamps();
+  await loadSettings();
 }
 
 function round(value) { return Math.round(value * 10) / 10; }
@@ -1455,4 +1485,4 @@ renderAll();
 renderStudioFormat();
 renderStudioControls();
 renderSvgAssets();
-void Promise.all([loadTemplates(), loadRegisteredStamps(), loadSettings()]);
+void initializeApplication();

@@ -20,6 +20,7 @@ venv/
 build/
 dist/
 assets/hanko-icon.ico
+build/msix-test-certificate/
 
 # Local signing and notarization automation
 build-signed-mac-app.sh
