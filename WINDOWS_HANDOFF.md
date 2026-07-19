@@ -8,7 +8,7 @@
 - UI、FastAPI、PDF処理、SVG印影生成の大部分はOS共通です。
 - macOSのCore Textを使ったAdobe Fonts等の検出は、`stamp_generator.py` 内でmacOS時だけ有効です。Windowsでは通常のフォントフォルダ走査へフォールバックします。
 - `dev_docs/` はローカル開発資料です。公開対象は `dev_docs/STAMP_STUDIO_DESIGN.md` のみです。
-- `docs/` はLP制作中のため、この初回公開では意図的にgitignore対象です。追加・公開はLP完成後に行います。
+- `docs/` はGitHub Pagesで公開するランディングページ（LP）のソースで、Git管理・公開対象です。
 
 ## Windows版で最初に行うこと
 
