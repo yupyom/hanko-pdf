@@ -51,15 +51,31 @@
 
   function updateDownloadLinks(platform) {
     var download = config.platforms[platform];
+    var badge = download && download.badge;
 
     if (!download) {
       return;
     }
 
     document.querySelectorAll("[data-download-link]").forEach(function (link) {
-      link.href = download.url;
-      link.textContent = download.label;
+      link.href = badge && badge.href ? badge.href : download.url;
       link.setAttribute("aria-label", download.label);
+      link.classList.toggle("store-badge-link", Boolean(badge));
+
+      if (badge) {
+        var image = document.createElement("img");
+
+        image.src = badge.image;
+        image.alt = badge.alt || download.label;
+        image.width = badge.width || 200;
+        image.loading = "lazy";
+
+        link.textContent = "";
+        link.appendChild(image);
+        return;
+      }
+
+      link.textContent = download.label;
     });
   }
 
@@ -80,11 +96,11 @@
     }
 
     if (title) {
-      title.textContent = "デスクトップ向けフリーウェアとして公開中。";
+      title.textContent = "Mac / Windows向けフリーウェアとして公開中。";
     }
 
     if (description) {
-      description.textContent = "Hanko PDFは、PDFへハンコを押して保存するためのフリーウェアです。ソースコードもGitHubで公開しています。";
+      description.textContent = "Hanko PDFは、PDFへハンコを押して保存するためのフリーウェアです。Mac版はGitHub Releasesから、Windows版はMicrosoft Storeから入手できます。ソースコードもGitHubで公開しています。";
     }
   }
 

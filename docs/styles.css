@@ -242,6 +242,33 @@ a {
   background: #fff;
 }
 
+.button.store-badge-link {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  line-height: 1;
+}
+
+.button.store-badge-link:hover,
+.button.store-badge-link:focus-visible {
+  transform: none;
+  box-shadow: none;
+}
+
+.button.store-badge-link:focus-visible {
+  outline: 3px solid var(--teal);
+  outline-offset: 4px;
+}
+
+.button.store-badge-link img {
+  width: 200px;
+  max-width: 100%;
+  height: auto;
+}
+
 .hero-note {
   max-width: 560px;
   margin: 20px 0 0;
@@ -735,6 +762,10 @@ button.sample-card {
 
 .download-section .button.primary {
   background: var(--ink);
+}
+
+.download-section .button.store-badge-link {
+  background: transparent;
 }
 
 .donation-box {
